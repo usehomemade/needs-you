@@ -26,6 +26,9 @@ struct ChatTarget: Hashable {
     /// Registered chats: what it works on (status line, last prompt), for matching.
     var detail = ""
 
+    /// Stays the same when the chat restarts: its folder, else its name (routing memory).
+    var memoryKey: String { folder.isEmpty ? "title:" + title.lowercased() : "folder:" + folder.lowercased() }
+
     var candidate: ChatCandidate {
         ChatCandidate(title: kind == .registered ? [title, detail].filter { !$0.isEmpty }.joined(separator: " ") : title, label: label, folder: folder,
                       aliases: kind == .herdrAgent || kind == .registered ? [] : aliases, focused: focused, isDesktop: kind == .desktop)
@@ -164,14 +167,17 @@ enum Router {
     }
 
     /// The matcher, then the on-device model where the matcher is not sure (HM-1364).
-    @MainActor static func parseSmart(_ transcript: String, targets: [ChatTarget], memory: (String) -> String? = { _ in nil }) async -> (Parsed, String) {
+    @MainActor static func parseSmart(_ transcript: String, targets: [ChatTarget], memory: ((String) -> String?)? = nil) async -> (Parsed, String) {
+        RoutingMemoryStore.shared.openKeys = Set(targets.map(\.memoryKey))
+        let memory = memory ?? { RoutingMemoryStore.shared.lookup($0) }
         guard let rest = Wake.afterWakeWord(transcript) else { return parseLogged(transcript, targets: targets) }
         let (route, log) = ChatMatcher.route(rest, targets.map(\.candidate), isProject: isProject)
         switch route {
         case .named, .newChat: return parsed(route, log: log, targets: targets)
         case .front, .choose: break
         }
-        let mem = memory(rest).flatMap { id in targets.firstIndex { $0.id == id } }
+        let words: String = { if case .choose(_, _, let h) = route { return RoutingMemory.words(rest: rest, heardName: h) }; return RoutingMemory.words(rest: rest) }()
+        let mem = memory(words).flatMap { key in targets.firstIndex { $0.memoryKey == key } }
         let model = await ModelRouter.shared.pick(rest, targets)
         let (judged, why) = RouteJudge.decide(route, model: model, memory: mem, explicitFront: log.hasPrefix("this one"))
         return parsed(judged, log: why.isEmpty ? log : log + "; " + why, targets: targets)
@@ -297,7 +303,7 @@ enum Router {
     /// Picks one of the offered chats from a spoken answer ("the second one", "trip planner").
     static func pick(_ answer: String, from options: [ChatTarget]) -> ChatTarget? {
         let w = Speech.words(answer)
-        let ordinals: [(Set<String>, Int)] = [(["first", "one", "1"], 0), (["second", "two", "2"], 1), (["third", "three", "3"], 2)]
+        let ordinals: [(Set<String>, Int)] = [(["first", "one", "1"], 0), (["second", "two", "2"], 1), (["third", "three", "3"], 2), (["fourth", "four", "4"], 3)]
         for (names, i) in ordinals where i < options.count && !w.filter({ names.contains($0) }).isEmpty && w.count <= 4 {
             return options[i]
         }

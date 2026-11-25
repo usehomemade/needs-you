@@ -63,6 +63,13 @@ final class VoiceCommands: ObservableObject {
     /// The 2 s before a command is typed into a chat (shown on the island).
     private var countdown: SendCountdown?
 
+    /// The name he said in front of the message, from the routing log ('heard "orchard": ...').
+    static func heardName(_ log: String?) -> String? {
+        guard let log, log.hasPrefix("heard \""), let end = log.dropFirst(7).firstIndex(of: "\"") else { return nil }
+        let name = String(log[log.index(log.startIndex, offsetBy: 7)..<end])
+        return name.isEmpty ? nil : name
+    }
+
     func setUp() {
         phoneListener.source = "iphone"
         for (l, other) in [(listener, phoneListener), (phoneListener, listener)] {
@@ -386,9 +393,17 @@ final class VoiceCommands: ObservableObject {
             if options.isEmpty { parsed = .nothing("No chats found.") }
             else {
                 let names = options.map { Self.short($0.title) }
-                let list = names.count > 1 ? names.dropLast().joined(separator: ", ") + ", or " + names.last! : names[0]
+                let list: String
+                if names.count > 1 {
+                    // Numbered, so he can press 1 to 4 or say the number (HM-1364).
+                    let items = names.enumerated().map { "\($0.offset + 1), \($0.element)" }
+                    list = items.dropLast().joined(separator: ". ") + ". Or " + items.last!
+                } else { list = names[0] }
                 let q = heard.isEmpty ? "Which chat? \(list)?" : "I'm not sure which chat you meant. \(list)?"
-                if let answer = await Conductor.shared.voiceClarify(q), let pick = Router.pick(answer, from: options) {
+                if let answer = await Conductor.shared.voiceClarify(q, choices: names.count > 1 ? options.count : 0), let pick = Router.pick(answer, from: options) {
+                    if let rest = Wake.afterWakeWord(transcript) {
+                        RoutingMemoryStore.shared.remember(words: RoutingMemory.words(rest: rest, heardName: heard), target: pick, source: "asked")
+                    }
                     parsed = .send(pick, text)
                 } else {
                     Sounds.shared.play(.cancelled)
@@ -424,6 +439,9 @@ final class VoiceCommands: ObservableObject {
             do {
                 try await Router.deliver(delivered, to: target)
                 Sounds.shared.play(.sent)
+                if let name = Self.heardName(routeLog) {
+                    RoutingMemoryStore.shared.remember(words: RoutingMemory.words(rest: name), target: target, source: "sent")
+                }
                 if target.kind == .registered {
                     // Waits in the chat's inbox for its next tool call or turn end (HM-1364).
                     Island.shared.queued(for: Self.short(target.title))

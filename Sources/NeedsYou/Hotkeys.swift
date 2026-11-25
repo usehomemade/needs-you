@@ -15,7 +15,7 @@ import SwiftUI
 final class Hotkeys: ObservableObject {
     static let shared = Hotkeys()
 
-    private enum ID: UInt32 { case escape = 1, turn = 2 }
+    private enum ID: UInt32 { case escape = 1, turn = 2, n1 = 11, n2 = 12, n3 = 13, n4 = 14 }
     private static let signature: OSType = 0x4E59_4B59 // "NYKY"
 
     private var refs: [ID: EventHotKeyRef] = [:]
@@ -85,6 +85,18 @@ final class Hotkeys: ObservableObject {
         }
     }
 
+    /// Keys 1 to `count` pick a chat while Needs You asks "which chat?" (HM-1364).
+    /// Registered only then, so the digits work as usual the rest of the time.
+    func numberKeys(_ count: Int) {
+        let codes: [UInt32] = [18, 19, 20, 21] // kVK_ANSI_1 ... 4
+        for (i, id) in [ID.n1, .n2, .n3, .n4].enumerated() {
+            unregister(id)
+            if i < count, let err = register(id, KeyCombo(keyCode: codes[i], modifiers: 0)) {
+                Isolation.note("keys: \(i + 1) not registered (\(err))")
+            }
+        }
+    }
+
     // MARK: Carbon
 
     private func register(_ id: ID, _ combo: KeyCombo) -> OSStatus? {
@@ -116,6 +128,7 @@ final class Hotkeys: ObservableObject {
                     case .escape:
                         if !VoiceCommands.shared.cancelPendingSend() { Conductor.shared.escapePressed() }
                     case .turn: TurnShortcut.pressed()
+                    case .n1, .n2, .n3, .n4: Conductor.shared.numberPressed(Int(id) - 10)
                     case nil: break
                     }
                 }

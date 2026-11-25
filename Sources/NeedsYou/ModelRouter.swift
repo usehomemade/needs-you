@@ -107,7 +107,14 @@ import FoundationModels
         #if canImport(FoundationModels)
         if #available(macOS 26, *) {
             let start = Date()
-            let prompt = "Chats:\n\(describe(targets))\n\nHe said: \u{201C}\(rest)\u{201D}"
+            var prompt = "Chats:\n\(describe(targets))\n\n"
+            // His earlier picks, as examples (routing memory).
+            let ex = RoutingMemoryStore.shared.examples().compactMap { e -> String? in
+                guard let i = targets.firstIndex(where: { $0.memoryKey == e.key }) else { return nil }
+                return "\u{201C}\(e.words)\u{201D} meant chat \(i + 1)"
+            }
+            if !ex.isEmpty { prompt += "Earlier:\n" + ex.joined(separator: "\n") + "\n\n" }
+            prompt += "He said: \u{201C}\(rest)\u{201D}"
             do {
                 let r = try await session().respond(to: prompt, generating: Pick.self,
                                                     options: GenerationOptions(sampling: .greedy))
