@@ -24,8 +24,9 @@ import FoundationModels
     private var debounce: Task<Void, Never>?
     private var warmed: Any?
 
-    /// He said the wake word: load the model now.
+    /// He said the wake word (and once at launch): load the model now.
     func wake() {
+        guard warmed == nil else { return }
         guard Self.available else { return }
         #if canImport(FoundationModels)
         if #available(macOS 26, *) {
@@ -59,7 +60,9 @@ import FoundationModels
             _ = k; return v
         }
         if let t = running[key] { return await t.value }
-        let t = Task { await Self.ask(rest, targets) }
+        // A session warmed on "Hey Claude" (instructions already loaded) is used once.
+        let warm = warmed; warmed = nil
+        let t = Task { await Self.ask(rest, targets, warm: warm) }
         running[key] = t
         let v = await t.value
         running[key] = nil
@@ -103,7 +106,7 @@ import FoundationModels
     }
     #endif
 
-    private static func ask(_ rest: String, _ targets: [ChatTarget]) async -> Int? {
+    private static func ask(_ rest: String, _ targets: [ChatTarget], warm: Any?) async -> Int? {
         #if canImport(FoundationModels)
         if #available(macOS 26, *) {
             let start = Date()
@@ -116,7 +119,8 @@ import FoundationModels
             if !ex.isEmpty { prompt += "Earlier:\n" + ex.joined(separator: "\n") + "\n\n" }
             prompt += "He said: \u{201C}\(rest)\u{201D}"
             do {
-                let r = try await session().respond(to: prompt, generating: Pick.self,
+                let s = (warm as? LanguageModelSession) ?? session()
+                let r = try await s.respond(to: prompt, generating: Pick.self,
                                                     options: GenerationOptions(sampling: .greedy))
                 let n = r.content.chat
                 Isolation.note(String(format: "model route: %d in %.0f ms", n, Date().timeIntervalSince(start) * 1000))

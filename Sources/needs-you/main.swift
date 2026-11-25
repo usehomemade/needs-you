@@ -96,7 +96,7 @@ while i < args.count {
 }
 request.text = positional.isEmpty ? nil : positional.joined(separator: " ")
 if command == .wake, let f = request.text { request.vadFile = (f as NSString).expandingTildeInPath; request.text = nil }
-if command == .clean || command == .stt || command == .tts || command == .turn || command == .voice, let m = request.title { request.context = m }
+if command == .clean || command == .stt || command == .tts || command == .turn || command == .voice || command == .clarify, let m = request.title { request.context = m }
 if command == .stt || command == .stop || command == .turn, let f = request.text { request.inputFile = (f as NSString).expandingTildeInPath; request.text = nil }
 if (command == .ask || command == .say), (request.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
     fail("\(verb) needs the text to speak")
