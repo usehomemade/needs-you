@@ -129,7 +129,7 @@ final class Conductor: ObservableObject {
             var r = Response(status: "status")
             if let u = req.chat, HookSetup.delivers(u.event), u.subagent != true {
                 // Messages that waited for the chat: the hook hands them over.
-                let m = ChatRegistry.shared.takeInbox(ChatInfo.id(pid: u.agentPid), how: u.event + " hook")
+                let m = ChatRegistry.shared.takeInbox(ChatRegistry.shared.chatID(for: u), how: u.event + " hook")
                 if !m.isEmpty { r.messages = m }
             }
             return r

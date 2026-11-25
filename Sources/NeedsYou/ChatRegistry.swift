@@ -16,14 +16,24 @@ final class ChatRegistry: ObservableObject {
     /// When the user last sent each chat something by voice.
     private(set) var lastSpokenTo: [String: Date] = [:]
 
-    func apply(_ u: ChatUpdate) {
-        var id = ChatInfo.id(pid: u.agentPid)
-        // Some agents (Cursor) run their hooks from another process than their MCP server:
-        // a hook from an unknown process joins the one chat of that agent in that folder.
-        if chats[id] == nil, !["mcp", "heartbeat", "status", "tool"].contains(u.event), let cwd = u.cwd {
-            let same = chats.values.filter { $0.agent == u.agent && AXMatch.path($0.cwd) == AXMatch.path(cwd) }
-            if same.count == 1 { id = same[0].id }
+    /// The chat an update belongs to. Some agents (Cursor) run their hooks in another process
+    /// than their MCP server: a hook from a process with no MCP chat joins the one MCP chat
+    /// of that agent in that folder.
+    func chatID(for u: ChatUpdate) -> String {
+        let id = ChatInfo.id(pid: u.agentPid)
+        if chats[id]?.hasMCP == true || ["mcp", "heartbeat", "status", "tool"].contains(u.event) { return id }
+        guard let cwd = u.cwd else { return id }
+        let same = chats.values.filter { $0.hasMCP && $0.agent == u.agent && AXMatch.path($0.cwd) == AXMatch.path(cwd) }
+        if same.count == 1 {
+            if chats[id] != nil { chats[id] = nil }
+            return same[0].id
         }
+        return id
+    }
+
+    func apply(_ u: ChatUpdate) {
+        let id = chatID(for: u)
+        if id != ChatInfo.id(pid: u.agentPid) { Isolation.note("chats: \(u.event) from pid \(u.agentPid) joins \(id)") }
         if u.subagent == true {
             // A subagent's hook: the chat is alive, but its state and prompts stay the main agent's.
             chats[id]?.lastSeen = Date()
