@@ -408,6 +408,8 @@ final class Conductor: ObservableObject {
             return r
         case .tts:
             return await Self.ttsTest(req)
+        case .clarify:
+            return await VoiceCommands.shared.clarifyTest(req)
         case .sounds:
             for cue in Cue.allCases { await Sounds.shared.playAndWait(cue); try? await Task.sleep(nanoseconds: 450_000_000) }
             return Response(status: "done")
@@ -937,16 +939,20 @@ final class Conductor: ObservableObject {
 
     /// Asks "which chat?" out loud; he answers by voice or presses 1 to `choices`.
     /// Returns the spoken answer, or the number pressed ("2").
-    func voiceClarify(_ question: String, choices: Int = 0) async -> String? {
+    /// The last "which chat?" ended with Escape: he does not want to pick one.
+    private(set) var clarifyEscaped = false
+
+    func voiceClarify(_ question: String, choices: Int = 0, test: Request? = nil) async -> String? {
         numberPick = nil
+        clarifyEscaped = false
         numberChoices = min(choices, 4)
-        Hotkeys.shared.numberKeys(numberChoices)
-        defer { numberChoices = 0; Hotkeys.shared.numberKeys(0) }
-        let heard = await clarifyTurn(question)
+        if test == nil { Hotkeys.shared.numberKeys(numberChoices) }
+        defer { numberChoices = 0; if test == nil { Hotkeys.shared.numberKeys(0) } }
+        let heard = await clarifyTurn(question, test: test)
         return numberPick.map(String.init) ?? heard
     }
 
-    private func clarifyTurn(_ question: String) async -> String? {
+    private func clarifyTurn(_ question: String, test: Request?) async -> String? {
         let previous = current, wasBusy = busy
         busy = true
         var convo = Conversation(id: Self.newID(), title: "Which chat?", message: question, startedAt: Date())
@@ -956,14 +962,18 @@ final class Conductor: ObservableObject {
             current = previous; phase = .idle
             if !wasBusy { release() }
         }
-        let req = Request(command: .ask)
+        let req = test ?? Request(command: .ask)
         micInUse = true
         defer { micInUse = false }
         do {
             try await speak(question, req, usersTurn: true)
             if numberPick != nil { return nil }
-            if escaped { return nil } // Escape: he does not want to pick one
+            if escaped { clarifyEscaped = true; return nil } // Escape: he does not want to pick one
+            // Let the room go quiet first, so the mic does not take the end of our
+            // own question for his answer.
+            if req.mute != true { try? await Task.sleep(nanoseconds: 350_000_000) }
             let heard = try await listen(wait: Prefs.waitSeconds, req)
+            Isolation.note("clarify: heard \u{201C}\(heard ?? "")\u{201D}")
             return numberPick == nil ? heard : nil
         } catch {
             return nil

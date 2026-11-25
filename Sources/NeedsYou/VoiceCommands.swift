@@ -63,6 +63,56 @@ final class VoiceCommands: ObservableObject {
     /// The 2 s before a command is typed into a chat (shown on the island).
     private var countdown: SendCountdown?
 
+    /// A message he said whose chat he did not name clearly (HM-1364).
+    struct Unsent { var text: String; var options: [ChatTarget]; var at: Date }
+    private var unsent: Unsent?
+
+    static func whichChatQuestion(_ names: [String], heardName: String, again: Bool) -> String {
+        if again {
+            return names.count > 1 ? "Sorry, which one? Say or press 1 to \(names.count)." : "Sorry, send it to \(names[0])? Say yes or no."
+        }
+        let list: String
+        if names.count > 1 {
+            // Numbered, so he can press 1 to 4 or say the number (HM-1364).
+            let items = names.enumerated().map { "\($0.offset + 1), \($0.element)" }
+            list = items.dropLast().joined(separator: ". ") + ". Or " + items.last!
+        } else { list = names[0] }
+        return heardName.isEmpty ? "Which chat? \(list)?" : "I'm not sure which chat you meant. \(list)?"
+    }
+
+    /// Asks which chat, once more if the answer was unclear. Returns the pick, or nil
+    /// and whether he pressed Escape. `test`: the clarify-test hook (muted, file input).
+    func askWhichChat(_ options: [ChatTarget], heardName: String, test: Request? = nil, heard: ((String) -> Void)? = nil) async -> (ChatTarget?, Bool) {
+        let names = options.map { Self.short($0.title) }
+        for again in [false, true] {
+            let q = Self.whichChatQuestion(names, heardName: heardName, again: again)
+            let answer = await Conductor.shared.voiceClarify(q, choices: names.count > 1 ? options.count : 0, test: test)
+            if Conductor.shared.clarifyEscaped { return (nil, true) }
+            guard let answer, !answer.isEmpty else { continue }
+            heard?(answer)
+            let i = ChoicePick.pick(answer, question: q, names: names)
+            Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(i.map { names[$0] } ?? "unclear")")
+            if let i { return (options[i], false) }
+            if names.count == 1, ChoicePick.tokens(answer).contains(where: { ["no", "nope", "hayır", "nein"].contains($0) }) { return (nil, true) }
+        }
+        return (nil, false)
+    }
+
+    /// Test hook: needs-you clarify-test --title "recipebox|orchard" --vad-file <wav> [--mute].
+    /// Runs "which chat?" through the real listening path with the file as the mic.
+    func clarifyTest(_ req: Request) async -> Response {
+        let names = (req.context ?? "").split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard !names.isEmpty else { var r = Response(status: "error"); r.error = "clarify-test needs --title \"a|b\""; return r }
+        let options = names.enumerated().map { ChatTarget(kind: .registered, id: "test-\($0.offset)", title: $0.element, aliases: [], focused: false) }
+        var t = req; t.mute = true
+        var answers: [String] = []
+        let (pick, escaped) = await askWhichChat(options, heardName: "", test: t) { answers.append($0) }
+        var r = Response(status: "measured")
+        r.transcript = answers.joined(separator: " | ")
+        r.state = pick.map { "picked \($0.title)" } ?? (escaped ? "escaped" : "unclear")
+        return r
+    }
+
     /// The name he said in front of the message, from the routing log ('heard "orchard": ...').
     static func heardName(_ log: String?) -> String? {
         guard let log, log.hasPrefix("heard \""), let end = log.dropFirst(7).firstIndex(of: "\"") else { return nil }
@@ -352,7 +402,7 @@ final class VoiceCommands: ObservableObject {
     }
 
     /// Test hook and second half of `handle`: route a transcript, count down on the island, deliver.
-    func route(_ transcript: String, dryRun: Bool, testOnly requested: Bool = false) async -> Response {
+    func route(_ transcript: String, dryRun: Bool, testOnly requested: Bool = false, forced: ChatTarget? = nil) async -> Response {
         // Fail closed: once a test pane was armed, live voice commands go only to
         // armed panes, even after the lock expired (then nothing is sent) until
         // `needs-you wake-test --arm-pane none` ends the test. An expired lock once
@@ -375,7 +425,19 @@ final class VoiceCommands: ObservableObject {
             if requested { return errorResponse(why) }
             return record(nil, text: "", transcript: transcript, outcome: .error, error: why)
         }
+        // A message kept after "which chat?" got no clear answer: "Hey Claude, orchard" (or "two") sends it.
+        if !testOnly, let u = unsent, Date().timeIntervalSince(u.at) < 300, let rest = Wake.afterWakeWord(transcript),
+           !rest.contains(":"), rest.split(separator: " ").count <= 4 { // only a name or a number, no new message
+            let names = u.options.map { Self.short($0.title) }
+            let fresh = targets.filter { t in u.options.contains { $0.id == t.id } }
+            if let i = ChoicePick.pick(rest, question: "", names: names), fresh.contains(where: { $0.id == u.options[i].id }) {
+                unsent = nil
+                return await route(Wake.phrase + ", " + Self.short(u.options[i].title) + ": " + u.text, dryRun: dryRun, testOnly: requested, forced: u.options[i])
+            }
+        }
         var (parsed, routeLog) = testOnly ? Router.parseLogged(transcript, targets: targets) : await Router.parseSmart(transcript, targets: targets)
+        if let forced, case .send(_, let m) = parsed { parsed = .send(forced, m) }
+        else if let forced, case .choose(_, let m, _) = parsed { parsed = .send(forced, m) }
         routeNote = routeLog
         defer { routeNote = nil }
         Isolation.note("route: " + routeLog)
@@ -392,23 +454,23 @@ final class VoiceCommands: ObservableObject {
         if case .choose(let options, let text, let heard) = parsed {
             if options.isEmpty { parsed = .nothing("No chats found.") }
             else {
-                let names = options.map { Self.short($0.title) }
-                let list: String
-                if names.count > 1 {
-                    // Numbered, so he can press 1 to 4 or say the number (HM-1364).
-                    let items = names.enumerated().map { "\($0.offset + 1), \($0.element)" }
-                    list = items.dropLast().joined(separator: ". ") + ". Or " + items.last!
-                } else { list = names[0] }
-                let q = heard.isEmpty ? "Which chat? \(list)?" : "I'm not sure which chat you meant. \(list)?"
-                if let answer = await Conductor.shared.voiceClarify(q, choices: names.count > 1 ? options.count : 0), let pick = Router.pick(answer, from: options) {
+                let (pick, escaped) = await askWhichChat(options, heardName: heard)
+                if let pick {
                     if let rest = Wake.afterWakeWord(transcript) {
                         RoutingMemoryStore.shared.remember(words: RoutingMemory.words(rest: rest, heardName: heard), target: pick, source: "asked")
                     }
                     parsed = .send(pick, text)
-                } else {
+                } else if escaped {
                     Sounds.shared.play(.cancelled)
                     await Conductor.shared.speakOnly("Okay, I didn't send it.")
                     return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: "No chat chosen")
+                } else {
+                    // Never drop it: it waits for "Hey Claude, <chat>" (or a number) for 5 minutes.
+                    unsent = Unsent(text: text, options: options, at: Date())
+                    Sounds.shared.play(.cancelled)
+                    Island.shared.error("Not sent", "Say the chat: \u{201C}\(Wake.phrase), \(Self.short(options[0].title))\u{201D}")
+                    await Conductor.shared.speakOnly("I kept your message. Say \(Wake.phrase) and the chat's name to send it.")
+                    return record(nil, text: text, transcript: transcript, outcome: .error, error: "No chat chosen; message kept for 5 minutes")
                 }
             }
         }
