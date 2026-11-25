@@ -2,13 +2,14 @@ import Foundation
 import NeedsYouShared
 
 /// The chats Needs You can reach by voice (HM-1364): only agents that registered
-/// through the Needs You MCP server or its hooks. Nothing is read off the screen.
+/// through the Needs You MCP server or its hooks. Idle ones are typed into through
+/// `AXDelivery` (HM-1374); the rest get their messages from the inbox.
 @MainActor
 final class ChatRegistry: ObservableObject {
     static let shared = ChatRegistry()
 
     @Published private(set) var chats: [String: ChatInfo] = [:]
-    /// Voice messages waiting for a chat: handed over by its next hook (Stop,
+    /// Voice messages waiting for a chat (busy, or typing it failed; HM-1374): handed over by its next hook (Stop,
     /// UserPromptSubmit, PostToolUse in the chat itself) or its `inbox` tool.
     struct Queued: Equatable { var text: String; var convoID: String? }
     @Published private(set) var inbox: [String: [Queued]] = [:]
@@ -67,6 +68,12 @@ final class ChatRegistry: ObservableObject {
     }
 
     func spokeTo(_ id: String) { lastSpokenTo[id] = Date() }
+
+    /// Typed into its window (HM-1374): it is starting a turn, so the next message waits in the inbox.
+    /// (Its own hooks may already have reported the new turn, or even its end: then they win.)
+    func typedInto(_ id: String, ifUnchangedSince t: Date) {
+        if chats[id]?.lastActivity == t { chats[id]?.state = .working }
+    }
 
     func queuedCount(_ id: String) -> Int { inbox[id]?.count ?? 0 }
     func queued(_ id: String) -> [String] { (inbox[id] ?? []).map(\.text) }

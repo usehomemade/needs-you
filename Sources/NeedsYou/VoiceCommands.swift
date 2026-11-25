@@ -492,32 +492,32 @@ final class VoiceCommands: ObservableObject {
             if dryRun {
                 var r = Response(status: "dry_run"); r.transcript = text; r.state = target.title; return r
             }
-            let previous = NSWorkspace.shared.frontmostApplication
             Sounds.shared.play(.sending)
             let go = await countDown(to: Self.short(target.title))
             if !go {
                 Sounds.shared.play(.cancelled)
-                if target.kind != .desktop && target.kind != .registered { previous?.activate() }
                 return record(target, text: text, transcript: transcript, outcome: .cancelled, error: nil)
             }
             let delivered = text + "\n" + Router.voiceSuffix
             do {
-                try await Router.deliver(delivered, to: target)
+                let how = try await Router.deliver(delivered, to: target)
                 Sounds.shared.play(.sent)
                 if let name = Self.heardName(routeLog) {
                     RoutingMemoryStore.shared.remember(words: RoutingMemory.words(rest: name), target: target, source: "sent")
                 }
-                if target.kind == .registered {
-                    // Waits in the chat's inbox for its next hook or inbox call (HM-1364).
+                if case .queued(let why) = how {
+                    // Busy, or a typing check failed (HM-1374): waits in the chat's inbox for its next hook or inbox call (HM-1364).
                     // History says "Queued" until the chat really takes it.
+                    Isolation.note("queued for \(target.title): \(why)")
                     var r = record(target, text: delivered, transcript: transcript, outcome: .queued, error: nil)
                     ChatRegistry.shared.enqueue(delivered, for: target.id, convoID: r.conversationID)
                     ChatRegistry.shared.spokeTo(target.id)
                     Island.shared.queued(for: Self.short(target.title))
                     r.status = "queued"
+                    r.state = why
                     return r
                 }
-                if target.kind != .desktop { previous?.activate() }
+                // Typed (HM-1374): AXDelivery already put his app, window, field and clipboard back.
                 return record(target, text: delivered, transcript: transcript, outcome: .sent, error: nil)
             } catch {
                 Sounds.shared.play(.cancelled)

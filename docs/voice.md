@@ -8,7 +8,20 @@ Turn on "Listen for Hey Claude" in the menu bar or in Settings. Then say:
 - "Hey Claude, trip planner: book the hotel for Friday" goes to the chat whose title, folder or terminal tab matches.
 - "Hey Claude, new chat in website: look at the failing deploy" opens a new terminal tab in the closest folder under `~/Projects` and starts `claude` with your message.
 
-The message waits in that chat's inbox and arrives on its next tool call, turn end or prompt. For 2 seconds before it is sent, the island shows the chat it goes to. Esc or saying "cancel" stops it. Every message ends with a line telling the agent it came by voice, so it answers out loud.
+If the chat is idle (its turn has ended), the message is typed into it, in whatever app shows it (see below). If it is busy, or a check fails, the message waits in that chat's inbox and arrives on its next tool call, turn end or prompt. For 2 seconds before it is sent, the island shows the chat it goes to. Esc or saying "cancel" stops it. Every message ends with a line telling the agent it came by voice, so it answers out loud.
+
+### Typing into an idle chat
+
+Needs You types through macOS Accessibility, the same way in every app (Terminal, Ghostty, iTerm, VS Code, Cursor, the Claude app), so it needs Accessibility access (System Settings, Privacy & Security, Accessibility). The code is `Sources/NeedsYou/AXDelivery.swift`.
+
+1. It finds the app that shows the chat from the agent's processes. For herdr and tmux it first selects the chat's pane with their own focus command, by the pane id the agent reported, and only if that pane really runs the agent.
+2. It scores each window and tab: the chat's folder in the window's title or document, its last reply or prompt on screen, the pane's own text. It goes on only when one place clearly wins (`AXMatch`).
+3. It waits until you have not typed or moved the mouse for 1.5 seconds.
+4. It brings that window and tab to the front and focuses the chat's text field. In an editor or a chat app this is the field labelled as the terminal or the prompt.
+5. It checks the app, window, tab and field, pastes the message as one line through a clipboard item that clipboard managers skip, checks again and presses Return.
+6. It puts back your app, window, text field, the tab that was showing, the pane and the clipboard.
+
+If any check fails, nothing is sent and the message waits in the inbox. Test hooks that never touch real chats: `needs-you voice-test "<text>" --title ax-send:<agent pid>` or `ax-scan:<agent pid>`. They only work for a chat whose folder has a `.needs-you-axtest` file, never for one in the main herdr session; `tools/ax-proof/fake-agent.py` is a stand-in chat. `--title ax-send:desktop` works only while the Claude app shows a new, empty session.
 
 Change the phrase in Settings, Hey Claude, Wake phrase. The field warns about phrases that are very short or common ("hey you", "hey Siri"). Test listens for 20 seconds and shows what it heard.
 
