@@ -102,7 +102,12 @@ public enum ChoicePick {
 
     /// Echo removed, then a number, then a name.
     public static func pick(_ answer: String, question: String, names: [String]) -> Int? {
-        let clean = stripEcho(answer, question: question, names: names)
+        pick(answer, questions: [question], names: names)
+    }
+
+    /// `questions`: every question asked so far; the echo can be any of them.
+    public static func pick(_ answer: String, questions: [String], names: [String]) -> Int? {
+        let clean = questions.map { stripEcho(answer, question: $0, names: names) }.min { $0.count < $1.count } ?? answer
         let named = name(clean, names: names)
         // "The Portuguese one": "one" is a pronoun when a name was said.
         let onlyOne = tokens(clean).allSatisfy { numbers[$0] == nil || $0 == "one" || $0 == "won" }

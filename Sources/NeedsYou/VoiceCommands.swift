@@ -84,13 +84,15 @@ final class VoiceCommands: ObservableObject {
     /// and whether he pressed Escape. `test`: the clarify-test hook (muted, file input).
     func askWhichChat(_ options: [ChatTarget], heardName: String, test: Request? = nil, heard: ((String) -> Void)? = nil) async -> (ChatTarget?, Bool) {
         let names = options.map { Self.short($0.title) }
+        var asked: [String] = []
         for again in [false, true] {
             let q = Self.whichChatQuestion(names, heardName: heardName, again: again)
+            asked.append(q)
             let answer = await Conductor.shared.voiceClarify(q, choices: names.count > 1 ? options.count : 0, test: test)
             if Conductor.shared.clarifyEscaped { return (nil, true) }
             guard let answer, !answer.isEmpty else { continue }
             heard?(answer)
-            let i = ChoicePick.pick(answer, question: q, names: names)
+            let i = ChoicePick.pick(answer, questions: asked, names: names)
             Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(i.map { names[$0] } ?? "unclear")")
             if let i { return (options[i], false) }
             if names.count == 1, ChoicePick.tokens(answer).contains(where: { ["no", "nope", "hayır", "nein"].contains($0) }) { return (nil, true) }
@@ -121,6 +123,7 @@ final class VoiceCommands: ObservableObject {
     }
 
     func setUp() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { ModelRouter.shared.wake() } // first pick not cold (HM-1364)
         phoneListener.source = "iphone"
         for (l, other) in [(listener, phoneListener), (phoneListener, listener)] {
             let src = l === listener ? "mac" : "iphone"
