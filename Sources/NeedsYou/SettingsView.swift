@@ -502,7 +502,7 @@ struct ReachByVoiceSection: View {
         } header: {
             Text("Reach by Voice")
         } footer: {
-            Text("Adds the Needs You MCP server and hooks to the agent. Each chat then tells Needs You what it is working on, and your spoken messages wait for it until its next step. Nothing is typed into your terminal. Chats of agents that are not connected cannot be reached by voice. New chats pick it up; restart open ones.")
+            Text("Adds the Needs You MCP server and hooks to the agent (a backup of each file is kept). Each chat then tells Needs You what it is working on. A message for an idle chat is typed into it through Accessibility; a busy chat gets it at its next step. Chats of agents that are not connected cannot be reached by voice. New chats pick it up; restart open ones. Codex asks once to trust the new hooks.")
                 .foregroundStyle(.secondary)
         }
         .onAppear { connect.refresh() }

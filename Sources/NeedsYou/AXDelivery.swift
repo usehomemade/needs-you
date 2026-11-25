@@ -27,7 +27,7 @@ enum AXDelivery {
         case notTyped(String)   // why, one line
     }
 
-    static let inputRoles: Set<String> = ["AXTextArea", "AXTextField", "AXComboBox"]
+    static let inputRoles: Set<String> = ["AXTextArea", "AXTextField"]
     /// How long he must not have touched the keyboard or mouse before focus moves (HM-1374).
     static var idleNeeded: TimeInterval = 1.5
     static var idleMaxWait: TimeInterval = 20
@@ -72,7 +72,9 @@ enum AXDelivery {
             await muxRestore?()
             return .notTyped("could not find the app that shows it")
         }
-        if isElectron(app) { enableWebAX(app) }
+        // Chromium-based apps (Electron, and apps like ChatGPT that rename the framework) build
+        // their tree only when asked; native apps ignore the attribute.
+        enableWebAX(app)
         let axApp = AXUIElementCreateApplication(hostPid)
         AXUIElementSetMessagingTimeout(axApp, 0.5)
         // A pane switch redraws the terminal a moment later.
@@ -133,7 +135,9 @@ enum AXDelivery {
             }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
-        guard let input = chooseInput(inputs(window), terminal: target.bundleID == nil) else {
+        // A CLI agent (it has a terminal) types into a terminal field; an app chat into its prompt.
+        let terminalAgent = target.bundleID == nil && (target.pane != nil || target.pid.map(hasTTY) ?? true)
+        guard let input = chooseInput(inputs(window), terminal: terminalAgent) else {
             await undo(saved, previousTab, muxRestore, hostPid)
             return .notTyped("not sure which text field in \(app.localizedName ?? "the window") is the chat")
         }
@@ -307,15 +311,20 @@ enum AXDelivery {
     }
 
     /// Test guard: the Claude app's page is a new, empty session (nothing of his is in it).
-    static func desktopShowsNewSession() -> Bool {
-        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Router.desktopBundleID).first else { return false }
+    static func desktopShowsNewSession(_ bundle: String = Router.desktopBundleID) -> Bool {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first else { return false }
         enableWebAX(app)
         let a = AXUIElementCreateApplication(app.processIdentifier)
         guard let w = element(a, kAXFocusedWindowAttribute) ?? (attr(a, kAXWindowsAttribute) as? [AXUIElement])?.first else { return false }
         var found = false
         var budget = 400
         walk(w, budget: &budget) { e in
-            if role(e) == "AXWebArea" { let t = title(e); if t.hasPrefix("New session") || t.hasPrefix("New chat") { found = true }; return false }
+            if role(e) == "AXWebArea" {
+                let t = title(e)
+                // Claude: "New session - Claude" / "New chat"; ChatGPT: its bare name on a new chat.
+                if t.hasPrefix("New session") || t.hasPrefix("New chat") || t == app.localizedName || t == "ChatGPT" { found = true }
+                return false
+            }
             return !found
         }
         return found
@@ -332,6 +341,14 @@ enum AXDelivery {
             p = i.ppid
         }
         return nil
+    }
+
+    /// The process has a controlling terminal (a CLI agent), or it runs inside an app (Cursor's agent).
+    static func hasTTY(_ pid: Int32) -> Bool {
+        var kp = kinfo_proc(); var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &kp, &size, nil, 0) == 0, size > 0 else { return true }
+        return kp.kp_eproc.e_tdev != -1 && kp.kp_eproc.e_tdev != 0
     }
 
     static func isElectron(_ app: NSRunningApplication) -> Bool {
@@ -373,7 +390,7 @@ enum AXDelivery {
     static func chooseInput(_ ins: [AXUIElement], terminal: Bool) -> AXUIElement? {
         if ins.count <= 1 { return ins.first }
         let focused = ins.first { (attr($0, kAXFocusedAttribute) as? Bool) == true }
-        let words = terminal ? ["terminal", "xterm", "shell"] : ["prompt", "message", "reply", "chat", "ask claude", "composer"]
+        let words = terminal ? ["terminal", "xterm", "shell"] : ["prompt", "message", "reply", "ask ", "composer"]
         let marked = ins.filter { e in let l = label(e).lowercased(); return words.contains { l.contains($0) } }
         if marked.count == 1 { return marked[0] }
         if let f = focused, marked.contains(where: { CFEqual($0, f) }) { return f }

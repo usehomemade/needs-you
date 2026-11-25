@@ -49,6 +49,8 @@ public enum AgentSetup {
     }
 
     public static func hasBlock(_ text: String) -> Bool { blockRange(in: text) != nil }
+
+    public static func cursorMCPEdit(_ root: [String: Any], cli: String, on: Bool) -> [String: Any] { HookSetup.cursorMCPEdit(root, cli: cli, on: on) }
 }
 
 /// Hook entries in an agent's JSON settings (Claude Code `settings.json`, Codex
@@ -63,6 +65,50 @@ public enum HookSetup {
     /// Claude Code: PostToolUse lets a message reach a chat while it works.
     public static let claudeEvents = ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "Notification", "SessionEnd"]
     public static let codexEvents = ["SessionStart", "UserPromptSubmit", "Stop"]
+    /// Cursor (~/.cursor/hooks.json, `{"version":1,"hooks":{"stop":[{"command":…}]}}`):
+    /// its event name -> the event Needs You understands.
+    public static let cursorEvents: [(cursor: String, event: String)] = [("beforeSubmitPrompt", "UserPromptSubmit"), ("stop", "Stop"), ("afterAgentResponse", "AgentResponse")]
+
+    /// Cursor's flat hooks file: adds (or refreshes) our entries, keeps every other hook.
+    public static func installCursor(_ root: [String: Any], cli: String) -> [String: Any] {
+        var root = removeCursor(root)
+        root["version"] = root["version"] ?? 1
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+        for (c, e) in cursorEvents {
+            var list = hooks[c] as? [[String: Any]] ?? []
+            list.append(["command": command(cli: cli, event: e, agent: "cursor")])
+            hooks[c] = list
+        }
+        root["hooks"] = hooks
+        return root
+    }
+
+    public static func removeCursor(_ root: [String: Any]) -> [String: Any] {
+        var root = root
+        guard var hooks = root["hooks"] as? [String: Any] else { return root }
+        for (event, value) in hooks {
+            guard let list = value as? [[String: Any]] else { continue }
+            let left = list.filter { !isOurs(($0["command"] as? String) ?? "") }
+            hooks[event] = left.isEmpty ? nil : left
+        }
+        root["hooks"] = hooks
+        return root
+    }
+
+    public static func isInstalledCursor(_ root: [String: Any]) -> Bool {
+        ((root["hooks"] as? [String: Any]) ?? [:]).values.contains { v in
+            ((v as? [[String: Any]]) ?? []).contains { isOurs(($0["command"] as? String) ?? "") }
+        }
+    }
+
+    /// Cursor's ~/.cursor/mcp.json: our server entry (other servers stay).
+    public static func cursorMCPEdit(_ root: [String: Any], cli: String, on: Bool) -> [String: Any] {
+        var root = root
+        var servers = root["mcpServers"] as? [String: Any] ?? [:]
+        servers["needs-you"] = on ? ["command": cli, "args": ["mcp"], "env": ["NEEDS_YOU_AGENT": "cursor"]] as [String: Any] : nil
+        root["mcpServers"] = servers
+        return root
+    }
 
     static func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 
@@ -116,7 +162,13 @@ public enum HookSetup {
     }
 
     /// What a hook prints so the agent gets the user's waiting messages (nil: nothing to say).
-    public static func output(event: String, messages: [String]) -> [String: Any]? {
+    public static func output(event: String, messages: [String], agent: String = "") -> [String: Any]? {
+        if agent == "cursor" {
+            // Cursor: a stop hook's followup_message becomes the next prompt; beforeSubmitPrompt must allow the prompt.
+            if event == "UserPromptSubmit" { return ["continue": true] }
+            guard !messages.isEmpty, event == "Stop" else { return nil }
+            return ["followup_message": messages.joined(separator: "\n\n")]
+        }
         guard !messages.isEmpty else { return nil }
         let text = messages.joined(separator: "\n\n")
         switch event {

@@ -10,9 +10,9 @@ final class AgentConnect: ObservableObject {
     static let shared = AgentConnect()
 
     enum Agent: String, CaseIterable, Identifiable {
-        case claude, codex
+        case claude, codex, cursor
         var id: String { rawValue }
-        var name: String { self == .claude ? "Claude Code" : "Codex" }
+        var name: String { switch self { case .claude: return "Claude Code"; case .codex: return "Codex"; case .cursor: return "Cursor (agent chat)" } }
     }
 
     @Published private(set) var connected: [Agent: Bool] = [:]
@@ -32,6 +32,12 @@ final class AgentConnect: ObservableObject {
     }
     var codexConfig: URL { codexDir.appendingPathComponent("config.toml") }
 
+    /// ~/.cursor (HM-1374): mcp.json and hooks.json.
+    var cursorDir: URL {
+        if let d = ProcessInfo.processInfo.environment["NEEDS_YOU_CURSOR_DIR"], !d.isEmpty { return URL(fileURLWithPath: d) }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cursor")
+    }
+
     var claudeBinary: String? {
         let home = NSHomeDirectory()
         return [home + "/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude", home + "/.claude/local/claude"]
@@ -43,6 +49,8 @@ final class AgentConnect: ObservableObject {
         installed[.codex] = FileManager.default.fileExists(atPath: codexDir.path)
         connected[.claude] = claudeHasServer()
         connected[.codex] = (try? String(contentsOf: codexConfig, encoding: .utf8)).map(AgentSetup.hasBlock) ?? false
+        installed[.cursor] = FileManager.default.fileExists(atPath: cursorDir.path) || FileManager.default.fileExists(atPath: "/Applications/Cursor.app")
+        connected[.cursor] = (readJSON(cursorDir.appendingPathComponent("mcp.json"))?["mcpServers"] as? [String: Any])?["needs-you"] != nil
     }
 
     /// Reads ~/.claude.json (never writes it).
@@ -77,6 +85,10 @@ final class AgentConnect: ObservableObject {
                     try new.write(to: codexConfig, atomically: true, encoding: .utf8)
                 }
                 try editHooks(codexDir.appendingPathComponent("hooks.json"), on: on, agent: "codex", events: HookSetup.codexEvents)
+            case .cursor:
+                // Cursor's agent chat: our MCP server in mcp.json, our hooks in hooks.json (its flat format).
+                try editJSON(cursorDir.appendingPathComponent("mcp.json")) { AgentSetup.cursorMCPEdit($0, cli: cli, on: on) }
+                try editJSON(cursorDir.appendingPathComponent("hooks.json")) { on ? HookSetup.installCursor($0, cli: cli) : HookSetup.removeCursor($0) }
             }
         } catch {
             lastError = error.localizedDescription
@@ -97,6 +109,31 @@ final class AgentConnect: ObservableObject {
         }
         let new = on ? HookSetup.install(root, cli: cli, agent: agent, events: events) : HookSetup.remove(root)
         guard on || HookSetup.isInstalled(root) else { return }
+        let out = try JSONSerialization.data(withJSONObject: new, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let backup = url.appendingPathExtension("needs-you-backup")
+        if let data, !fm.fileExists(atPath: backup.path) { try data.write(to: backup) }
+        try out.write(to: url, options: .atomic)
+    }
+
+    func readJSON(_ url: URL) -> [String: Any]? {
+        guard let d = try? Data(contentsOf: url), !d.isEmpty else { return nil }
+        return try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+    }
+
+    /// Rewrites a JSON object file through `change`; one backup per file, nothing written when nothing changes.
+    private func editJSON(_ url: URL, _ change: ([String: Any]) -> [String: Any]) throws {
+        let fm = FileManager.default
+        let data = try? Data(contentsOf: url)
+        var root: [String: Any] = [:]
+        if let data, !data.isEmpty {
+            guard let r = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw Fail.msg("\(url.lastPathComponent) is not a JSON object; nothing changed.")
+            }
+            root = r
+        }
+        let new = change(root)
+        if NSDictionary(dictionary: new).isEqual(to: root) { return }
         let out = try JSONSerialization.data(withJSONObject: new, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let backup = url.appendingPathExtension("needs-you-backup")
