@@ -924,7 +924,29 @@ final class Conductor: ObservableObject {
 
     /// Asks one short question by voice for the Hey Claude router, in the queue like any ask.
     /// Part of the user's own turn, so it goes ahead of queued asks (never waits behind one).
-    func voiceClarify(_ question: String) async -> String? {
+    /// The number he pressed while "which chat?" was open (HM-1364).
+    private var numberPick: Int?
+    private var numberChoices = 0
+
+    func numberPressed(_ n: Int) {
+        guard numberChoices > 0, (1...numberChoices).contains(n) else { return }
+        numberPick = n
+        Isolation.note("keys: picked \(n)")
+        if voicePlaying { stopSpeaking(.voice) } else { recorder?.stop() }
+    }
+
+    /// Asks "which chat?" out loud; he answers by voice or presses 1 to `choices`.
+    /// Returns the spoken answer, or the number pressed ("2").
+    func voiceClarify(_ question: String, choices: Int = 0) async -> String? {
+        numberPick = nil
+        numberChoices = min(choices, 4)
+        Hotkeys.shared.numberKeys(numberChoices)
+        defer { numberChoices = 0; Hotkeys.shared.numberKeys(0) }
+        let heard = await clarifyTurn(question)
+        return numberPick.map(String.init) ?? heard
+    }
+
+    private func clarifyTurn(_ question: String) async -> String? {
         let previous = current, wasBusy = busy
         busy = true
         var convo = Conversation(id: Self.newID(), title: "Which chat?", message: question, startedAt: Date())
@@ -939,8 +961,10 @@ final class Conductor: ObservableObject {
         defer { micInUse = false }
         do {
             try await speak(question, req, usersTurn: true)
+            if numberPick != nil { return nil }
             if escaped { return nil } // Escape: he does not want to pick one
-            return try await listen(wait: Prefs.waitSeconds, req)
+            let heard = try await listen(wait: Prefs.waitSeconds, req)
+            return numberPick == nil ? heard : nil
         } catch {
             return nil
         }
