@@ -11,7 +11,8 @@ final class MCPServer {
     private let agent: (pid: Int32, comm: String)
     private let kind: String
     private let env = ProcessInfo.processInfo.environment
-    private let cwd = FileManager.default.currentDirectoryPath
+    /// Cursor starts MCP servers in its own folder and names the window's workspace in WORKSPACE_FOLDER_PATHS.
+    private let cwd = ProcessInfo.processInfo.environment["WORKSPACE_FOLDER_PATHS"].flatMap { $0.split(separator: ",").first.map(String.init) }.flatMap { $0.isEmpty ? nil : $0 } ?? FileManager.default.currentDirectoryPath
 
     init() {
         agent = AgentProcess.agent()
