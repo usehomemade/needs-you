@@ -292,6 +292,27 @@ final class Conductor: ObservableObject {
             }
             r.transcript = String(format: "%.0f ms", Date().timeIntervalSince(t0) * 1000)
             return r
+        case .voice where (req.context ?? "").hasPrefix("ax-"):
+            // Silent Accessibility delivery hooks (HM-1374), never any audio:
+            //   voice-test "<text>" --title ax-send:<agent pid>   type into that connected chat (the real path)
+            //   voice-test --title ax-scan:<agent pid>            where it would go, nothing focused or typed
+            // Only chats whose folder holds a `.needs-you-axtest` file: tests never touch real chats.
+            let parts = (req.context ?? "").split(separator: ":").map(String.init)
+            guard parts.count == 2, let pid = Int32(parts[1]), let c = ChatRegistry.shared.chat(forPid: pid) else {
+                return errorResponse("ax-send:<pid> / ax-scan:<pid> of a connected chat")
+            }
+            guard FileManager.default.fileExists(atPath: c.cwd + "/.needs-you-axtest") else {
+                return errorResponse("\(c.cwd) has no .needs-you-axtest file: not a test chat")
+            }
+            if let p = c.pane, p.kind == .herdr, (p.socket ?? "").hasSuffix("/.config/herdr/herdr.sock") || p.socket == nil {
+                return errorResponse("\(c.cwd) reports a pane in the main herdr session: tests use a throwaway herdr session only")
+            }
+            var r = Response(status: "measured")
+            let t0 = Date()
+            let how = await Router.typeIntoChat(parts[0] == "ax-scan" ? "" : (req.text ?? "ax test") + "\n" + Router.voiceSuffix, id: c.id, dryRun: parts[0] == "ax-scan")
+            r.state = { switch how { case .typed(let a): return "typed into \(a)"; case .queued(let w): return "queued: \(w)" } }()
+            r.transcript = String(format: "%.0f ms | ", Date().timeIntervalSince(t0) * 1000) + AXDelivery.lastLog.joined(separator: " | ")
+            return r
         case .voice where (req.context ?? "").hasPrefix("keys"):
             // Silent shortcut hooks (HM-1353, HM-1354), never any audio:
             //   voice-test --title keys          what the turn shortcut would do now
@@ -1164,7 +1185,10 @@ final class Conductor: ObservableObject {
             let hit = reg.first { v.pane != nil && $0.pane?.id == v.pane }
                 ?? { let f = reg.filter { $0.cwd == v.cwd }; return f.count == 1 ? f[0] : nil }()
             if let c = hit {
-                await MainActor.run { ChatRegistry.shared.enqueue(text0, for: c.id) } // voicemail answer
+                // Typed in when it is idle (HM-1374), else it waits in its inbox.
+                if case .queued = await Router.typeIntoChat(text0, id: c.id) {
+                    await MainActor.run { ChatRegistry.shared.enqueue(text0, for: c.id) } // voicemail answer
+                }
                 return nil
             }
         }

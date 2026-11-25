@@ -3,11 +3,9 @@ import ApplicationServices
 import Foundation
 import NeedsYouShared
 
-/// Where a spoken message can go. The user's claude sessions run inside herdr
-/// (a terminal workspace manager in Ghostty), so herdr's agent list is the
-/// source of chat titles, and `herdr agent prompt` delivers the text as a
-/// bracketed paste plus Enter, the same as typing it. The Claude desktop app is
-/// the only other target. Nothing else is ever typed into.
+/// Where a spoken message can go: connected chats (MCP registrations), else the
+/// old herdr scan and the Claude desktop app. Typing always goes through
+/// `AXDelivery` (HM-1374), the one generic Accessibility path.
 struct ChatTarget: Hashable {
     enum Kind: Hashable { case herdrAgent, herdrPane, desktop, registered }
     var kind: Kind
@@ -341,74 +339,74 @@ enum Router {
         }
     }
 
-    static func deliver(_ text: String, to target: ChatTarget) async throws {
+    /// How a message went out.
+    enum Delivered: Equatable {
+        /// Typed into the chat's window (HM-1374): the app's name.
+        case typed(String)
+        /// Waits in the chat's inbox for its next tool call, hook or turn end; why it was not typed.
+        case queued(String)
+    }
+
+    /// Every message that is typed goes through `AXDelivery` (HM-1374): one generic
+    /// Accessibility path for every app, with herdr or tmux selecting the pane first.
+    /// A connected chat is typed into only when it is idle; a busy one (or a failed
+    /// check) gets it from its inbox.
+    @discardableResult
+    static func deliver(_ text: String, to target: ChatTarget) async throws -> Delivered {
         try await verify(target)
         switch target.kind {
-        case .herdrAgent:
-            // A new test tab stays in the background; everything else comes to the front.
-            if !(target.fresh && !target.focused) { _ = try? await run([herdr, "agent", "focus", target.id]) }
-            try await verify(ChatTarget(kind: target.kind, id: target.id, title: target.title, aliases: [], focused: true, byFocus: false, fresh: target.fresh))
-            let out = try await run([herdr, "agent", "prompt", target.id, text], checkExit: true)
-            if out.contains("agent_blocked") { throw DeliveryError.failed("That chat is waiting on an approval, so nothing was sent.") }
-        case .herdrPane:
-            _ = try await run([herdr, "pane", "send-text", target.id, text], checkExit: true)
-            _ = try await run([herdr, "pane", "send-keys", target.id, "enter"], checkExit: true)
+        case .herdrAgent, .herdrPane:
+            let ax = AXDelivery.Target(hint: AXMatch.Hint(cwd: "", names: [target.label, target.folder].filter { !$0.isEmpty }),
+                                       pid: nil, pane: PaneRef(kind: .herdr, id: target.id))
+            switch await AXDelivery.send(text, to: ax) {
+            case .typed(let app): return .typed(app)
+            case .notTyped(let why): throw DeliveryError.failed("Not typed: \(why).")
+            }
         case .desktop:
-            try await pasteIntoDesktop(text)
+            let ax = AXDelivery.Target(hint: AXMatch.Hint(cwd: ""), pid: nil, pane: nil, bundleID: desktopBundleID)
+            switch await AXDelivery.send(text, to: ax) {
+            case .typed(let app): return .typed(app)
+            case .notTyped(let why): throw DeliveryError.failed("Not typed into the Claude app: \(why).")
+            }
         case .registered:
-            // Never typed: the caller queues it with its history entry (VoiceCommands).
-            break
+            // Typed when idle; on .queued the caller queues it with its history entry (VoiceCommands).
+            return await typeIntoChat(text, id: target.id)
         }
     }
 
+    /// A connected chat: typed into its window when it is idle (HM-1374). Never queues;
+    /// on `.queued` the caller puts it in the inbox.
     @MainActor
-    private static func pasteIntoDesktop(_ text: String) async throws {
-        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        guard AXIsProcessTrustedWithOptions(opts) else {
-            throw DeliveryError.failed("Needs You needs Accessibility access to type into the Claude app (System Settings > Privacy & Security > Accessibility).")
+    static func typeIntoChat(_ text: String, id: String, dryRun: Bool = false) async -> Delivered {
+        let reg = ChatRegistry.shared
+        guard let c = reg.chats[id] else { return .queued("chat not found") }
+        guard c.state == .idle else { return .queued("it is busy") }
+        guard reg.queuedCount(id) == 0 else { return .queued("earlier messages still wait") }
+        switch await AXDelivery.send(text, to: axTarget(c), dryRun: dryRun) {
+        case .typed(let app):
+            if !dryRun { reg.typedInto(id); reg.spokeTo(id) }
+            return .typed(app)
+        case .notTyped(let why):
+            return .queued(why)
         }
-        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: desktopBundleID).first else {
-            throw DeliveryError.failed("The Claude app is not running.")
-        }
-        app.activate()
-        try await Task.sleep(nanoseconds: 350_000_000)
-        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == desktopBundleID else {
-            throw DeliveryError.failed("Could not bring the Claude app to the front, so nothing was typed.")
-        }
-        let board = NSPasteboard.general
-        let saved: [NSPasteboardItem] = (board.pasteboardItems ?? []).map { item in
-            let copy = NSPasteboardItem()
-            for type in item.types { if let d = item.data(forType: type) { copy.setData(d, forType: type) } }
-            return copy
-        }
-        board.clearContents()
-        board.setString(text, forType: .string)
-        key(9, flags: .maskCommand)   // v
-        try await Task.sleep(nanoseconds: 150_000_000)
-        key(36, flags: [])            // return
-        try await Task.sleep(nanoseconds: 600_000_000)
-        board.clearContents()
-        if !saved.isEmpty { board.writeObjects(saved) }
     }
 
-    private static func key(_ code: CGKeyCode, flags: CGEventFlags) {
-        let src = CGEventSource(stateID: .hidSystemState)
-        for down in [true, false] {
-            let e = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: down)
-            e?.flags = flags
-            e?.post(tap: .cghidEventTap)
-        }
+    static func axTarget(_ c: ChatInfo) -> AXDelivery.Target {
+        let names = [c.folder, c.status ?? ""].filter { !$0.isEmpty }
+        let texts = [c.lastReply ?? "", c.prompts.last ?? ""].filter { !$0.isEmpty }
+        return AXDelivery.Target(hint: AXMatch.Hint(cwd: c.cwd, names: names, texts: texts), pid: c.agentPid, pane: c.pane)
     }
 
     // MARK: Process
 
-    static func run(_ args: [String], checkExit: Bool = false) async throws -> String {
+    static func run(_ args: [String], checkExit: Bool = false, env extra: [String: String] = [:]) async throws -> String {
         try await withCheckedThrowingContinuation { cont in
             let p = Process()
             p.executableURL = URL(fileURLWithPath: args[0])
             p.arguments = Array(args.dropFirst())
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+            for (k, v) in extra { env[k] = v }
             p.environment = env
             let pipe = Pipe()
             p.standardOutput = pipe
