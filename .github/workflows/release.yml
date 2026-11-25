@@ -175,7 +175,7 @@ jobs:
           V: ${{ steps.version.outputs.version }}
         run: |
           if [ -z "$GH_TOKEN" ]; then echo "::warning::no HOMEBREW_TAP_TOKEN: cask not bumped"; exit 0; fi
-          gh repo clone "$TAP" tap -- --depth 1
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${TAP}.git" tap
           mkdir -p tap/Casks && cp dist/needs-you.rb tap/Casks/needs-you.rb
           cd tap
           git config user.name "github-actions[bot]"
