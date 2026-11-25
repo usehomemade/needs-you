@@ -9,7 +9,7 @@ final class ChatRegistry: ObservableObject {
 
     @Published private(set) var chats: [String: ChatInfo] = [:]
     /// Messages for a chat that could not be typed in yet (it was busy): handed over by its Stop hook.
-    private(set) var inbox: [String: [String]] = [:]
+    @Published private(set) var inbox: [String: [String]] = [:]
     /// When the user last sent each chat something by voice.
     private(set) var lastSpokenTo: [String: Date] = [:]
 
@@ -52,4 +52,7 @@ final class ChatRegistry: ObservableObject {
     }
 
     func spokeTo(_ id: String) { lastSpokenTo[id] = Date() }
+
+    func queuedCount(_ id: String) -> Int { inbox[id]?.count ?? 0 }
+    func queued(_ id: String) -> [String] { inbox[id] ?? [] }
 }

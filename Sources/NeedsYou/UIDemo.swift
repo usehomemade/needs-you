@@ -8,7 +8,7 @@ import SwiftUI
 /// writes none of them (Prefs.readOnly). Agent instructions are only touched when
 /// NEEDS_YOU_CLAUDE_DIR points at a test folder.
 ///
-///   main [--section conversations|voicemails|<project>] [--select first]
+///   main [--section conversations|voicemails|chats|<project>] [--select first]
 ///   settings [--pane general|heyClaude|voice|microphones|models|doNotDisturb|agents]
 ///   training
 ///
@@ -52,6 +52,7 @@ enum UIDemo {
                 switch value("--section") ?? "conversations" {
                 case "conversations": nav.section = .conversations
                 case "voicemails": nav.section = .voicemails
+                case "chats": nav.section = .chats
                 case let p: nav.section = .project(p)
                 }
                 if value("--select") == "first" {

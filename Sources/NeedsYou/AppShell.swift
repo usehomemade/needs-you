@@ -35,13 +35,14 @@ final class Nav: ObservableObject {
     static let shared = Nav()
 
     enum Section: Hashable {
-        case conversations, voicemails
+        case conversations, voicemails, chats
         case project(String)
     }
 
     @Published var section: Section? = .conversations
     @Published var conversation: String?
     @Published var voicemail: String?
+    @Published var chat: String?
 
     /// Captured from the scene so AppKit callbacks (Dock click, Dock menu) can open windows.
     static var openWindowAction: OpenWindowAction?
@@ -95,6 +96,7 @@ struct AppCommands: Commands {
         CommandGroup(before: .sidebar) {
             Button("Conversations") { nav.show(.conversations) }.keyboardShortcut("1")
             Button("Voicemails") { nav.show(.voicemails) }.keyboardShortcut("2")
+            Button("Chats") { nav.show(.chats) }.keyboardShortcut("3")
             Divider()
         }
         CommandGroup(before: .windowList) {

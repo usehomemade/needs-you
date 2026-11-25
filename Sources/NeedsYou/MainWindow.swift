@@ -21,6 +21,7 @@ struct MainView: View {
             Group {
                 switch nav.section ?? .conversations {
                 case .voicemails: VoicemailList(search: search)
+                case .chats: ChatList(search: search)
                 case .conversations: ConversationList(project: nil, search: search)
                 case .project(let p): ConversationList(project: p, search: search)
                 }
@@ -33,6 +34,12 @@ struct MainView: View {
                     VoicemailDetail(voicemail: v)
                 } else {
                     ContentUnavailableView("No Voicemail Selected", systemImage: "recordingtape")
+                }
+            case .chats:
+                if let c = ChatRegistry.shared.chats[nav.chat ?? ""] {
+                    ChatDetail(chat: c)
+                } else {
+                    ContentUnavailableView("No Chat Selected", systemImage: "terminal")
                 }
             default:
                 if let c = conductor.current?.id == nav.conversation ? conductor.current : conductor.history.first(where: { $0.id == nav.conversation }) {
@@ -51,6 +58,7 @@ struct MainView: View {
 
     private var searchPrompt: String {
         if case .voicemails = nav.section { return "Search Voicemails" }
+        if case .chats = nav.section { return "Search Chats" }
         return "Search Conversations"
     }
 }
@@ -59,6 +67,7 @@ struct MainView: View {
 
 struct Sidebar: View {
     @EnvironmentObject var conductor: Conductor
+    @ObservedObject private var registry = ChatRegistry.shared
     @ObservedObject private var nav = Nav.shared
     @ObservedObject private var dnd = DoNotDisturb.shared
 
@@ -70,6 +79,9 @@ struct Sidebar: View {
                 Label("Voicemails", systemImage: "recordingtape")
                     .badge(dnd.unheard.count)
                     .tag(Nav.Section.voicemails)
+                Label("Chats", systemImage: "terminal")
+                    .badge(registry.reachable.count)
+                    .tag(Nav.Section.chats)
             }
             if !projects.isEmpty {
                 Section("Projects") {
@@ -122,6 +134,93 @@ struct SidebarStatus: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+}
+
+// MARK: Chats (HM-1364)
+
+/// The chats connected through the Needs You MCP server: the ones voice can reach.
+struct ChatList: View {
+    let search: String
+    @ObservedObject private var registry = ChatRegistry.shared
+    @ObservedObject private var nav = Nav.shared
+
+    var body: some View {
+        let chats = registry.reachable.filter { c in
+            search.isEmpty || [c.displayName, c.agentName, c.summary, c.cwd].contains { $0.localizedCaseInsensitiveContains(search) }
+        }
+        if chats.isEmpty {
+            ContentUnavailableView(search.isEmpty ? "No Chats Connected" : "No Results",
+                                   systemImage: "terminal",
+                                   description: Text(search.isEmpty ? "Turn on an agent in Settings \u{2192} Agents \u{2192} Reach by Voice. New chats show up here." : ""))
+        } else {
+            List(chats, id: \.id, selection: $nav.chat) { c in
+                ChatRow(chat: c, queued: registry.queuedCount(c.id)).tag(c.id)
+            }
+        }
+    }
+}
+
+struct ChatRow: View {
+    let chat: ChatInfo
+    let queued: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(chat.displayName).font(.headline).lineLimit(1)
+                Spacer()
+                Text(chat.lastActivity, style: .relative).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(ChatDetail.stateLine(chat, queued: queued)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            if let p = chat.prompts.last { Text(p).font(.callout).foregroundStyle(.secondary).lineLimit(2) }
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+struct ChatDetail: View {
+    let chat: ChatInfo
+    @ObservedObject private var registry = ChatRegistry.shared
+
+    static func stateLine(_ c: ChatInfo, queued: Int) -> String {
+        var s = c.agentName
+        switch c.state {
+        case .working: s += " \u{00B7} working"
+        case .waiting: s += " \u{00B7} waiting for you"
+        case .idle: s += " \u{00B7} idle"
+        case .unknown: break
+        }
+        if queued > 0 { s += " \u{00B7} \(queued) queued" }
+        return s
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Agent", value: chat.agentName)
+                LabeledContent("Folder", value: chat.cwd.isEmpty ? "Unknown" : (chat.cwd as NSString).abbreviatingWithTildeInPath)
+                LabeledContent("State", value: Self.stateLine(chat, queued: 0))
+                LabeledContent("Connected", value: chat.hasHooks ? "MCP and hooks" : "MCP")
+                if let s = chat.status, !s.isEmpty { LabeledContent("Status", value: s) }
+            }
+            let q = registry.queued(chat.id)
+            if !q.isEmpty {
+                Section("Waiting for its next tool call or turn end") {
+                    ForEach(Array(q.enumerated()), id: \.offset) { Text($0.element) }
+                }
+            }
+            if !chat.prompts.isEmpty {
+                Section("Recent prompts") {
+                    ForEach(Array(chat.prompts.reversed().enumerated()), id: \.offset) { Text($0.element).lineLimit(4) }
+                }
+            }
+            if let r = chat.lastReply, !r.isEmpty {
+                Section("Last reply") { Text(r).lineLimit(8) }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(chat.displayName)
     }
 }
 
