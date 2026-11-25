@@ -70,7 +70,10 @@ final class ChatRegistry: ObservableObject {
     func spokeTo(_ id: String) { lastSpokenTo[id] = Date() }
 
     /// Typed into its window (HM-1374): it is starting a turn, so the next message waits in the inbox.
-    func typedInto(_ id: String) { chats[id]?.state = .working }
+    /// (Its own hooks may already have reported the new turn, or even its end: then they win.)
+    func typedInto(_ id: String, ifUnchangedSince t: Date) {
+        if chats[id]?.lastActivity == t { chats[id]?.state = .working }
+    }
 
     func queuedCount(_ id: String) -> Int { inbox[id]?.count ?? 0 }
     func queued(_ id: String) -> [String] { (inbox[id] ?? []).map(\.text) }

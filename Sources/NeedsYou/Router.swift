@@ -354,6 +354,7 @@ enum Router {
     @discardableResult
     static func deliver(_ text: String, to target: ChatTarget) async throws -> Delivered {
         try await verify(target)
+        await MainActor.run { AXDelivery.lastLog = [] }
         switch target.kind {
         case .herdrAgent, .herdrPane:
             let ax = AXDelivery.Target(hint: AXMatch.Hint(cwd: "", names: [target.label, target.folder].filter { !$0.isEmpty }),
@@ -379,12 +380,13 @@ enum Router {
     @MainActor
     static func typeIntoChat(_ text: String, id: String, dryRun: Bool = false) async -> Delivered {
         let reg = ChatRegistry.shared
+        AXDelivery.lastLog = []
         guard let c = reg.chats[id] else { return .queued("chat not found") }
         guard c.state == .idle else { return .queued("it is busy") }
         guard reg.queuedCount(id) == 0 else { return .queued("earlier messages still wait") }
         switch await AXDelivery.send(text, to: axTarget(c), dryRun: dryRun) {
         case .typed(let app):
-            if !dryRun { reg.typedInto(id); reg.spokeTo(id) }
+            if !dryRun { reg.typedInto(id, ifUnchangedSince: c.lastActivity); reg.spokeTo(id) }
             return .typed(app)
         case .notTyped(let why):
             return .queued(why)

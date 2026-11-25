@@ -41,8 +41,10 @@ enum AXDelivery {
 
     // MARK: Entry
 
-    static func send(_ text: String, to target: Target, dryRun: Bool = false) async -> Outcome {
-        lastLog = []
+    static func send(_ text0: String, to target: Target, dryRun: Bool = false) async -> Outcome {
+        // One line: a newline inside a paste would send the message by itself in a terminal
+        // without bracketed paste, before our checks allow Return. The voice line stays last.
+        let text = text0.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
         var t = target
         let t0 = Date()
         guard AXIsProcessTrusted() else { return .notTyped("Needs You has no Accessibility access") }
@@ -75,8 +77,14 @@ enum AXDelivery {
         AXUIElementSetMessagingTimeout(axApp, 0.5)
         // A pane switch redraws the terminal a moment later.
         if muxRestore != nil { try? await Task.sleep(nanoseconds: 120_000_000) }
-        let places = scan(axApp)
-        let scores = places.map { AXMatch.score($0.place, t.hint) }
+        var places = scan(axApp)
+        var scores = places.map { AXMatch.score($0.place, t.hint) }
+        // After a pane switch the terminal may still show the old pane for a moment.
+        for _ in 0..<6 where muxRestore != nil && AXMatch.pick(scores) == nil {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            places = scan(axApp)
+            scores = places.map { AXMatch.score($0.place, t.hint) }
+        }
         for (p, s) in zip(places, scores) { log(String(format: "candidate %.1f \"%@\"%@ %@", s.score, String(p.place.title.prefix(60)), p.tab != nil ? " (tab)" : "", s.why.joined(separator: ", "))) }
         guard let i = AXMatch.pick(scores, alone: muxRestore == nil) else {
             await muxRestore?()
@@ -117,22 +125,30 @@ enum AXDelivery {
             }
             if NSWorkspace.shared.frontmostApplication?.processIdentifier == hostPid, let fw = element(axApp, kAXFocusedWindowAttribute) {
                 // Native window tabs (Terminal, Ghostty) are one AXWindow each: after a tab press the window changes.
-                if CFEqual(fw, place.window) || (place.tab != nil && title(fw) == place.place.title) { window = fw; front = true; break }
+                // Native window tabs (Terminal, Ghostty) can be one AXWindow each: after the press, the
+                // focused window is the one whose tab bar shows the pressed tab as selected.
+                if let tab = place.tab {
+                    if tabSelected(tab) || tabTitles(fw, selected: true).contains(place.place.title) { window = fw; front = true; break }
+                } else if CFEqual(fw, place.window) { window = fw; front = true; break }
             }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
-        let input = inputs(window).first { (attr($0, kAXFocusedAttribute) as? Bool) == true } ?? place.input ?? inputs(window).first
-        if let input { AXUIElementSetAttributeValue(input, kAXFocusedAttribute as CFString, kCFBooleanTrue) }
+        guard let input = chooseInput(inputs(window), terminal: target.bundleID == nil) else {
+            await undo(saved, previousTab, muxRestore, hostPid)
+            return .notTyped("not sure which text field in \(app.localizedName ?? "the window") is the chat")
+        }
+        AXUIElementSetAttributeValue(input, kAXFocusedAttribute as CFString, kCFBooleanTrue)
 
         // 5. Check before pasting: the right app in front, the right window, a text input in it.
         func verified(_ stage: String) -> String? {
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == hostPid else { return "\(stage): another app came to the front" }
-            guard let fw = element(axApp, kAXFocusedWindowAttribute), CFEqual(fw, window) else { return "\(stage): another window took focus" }
+            guard let fw = element(axApp, kAXFocusedWindowAttribute) else { return "\(stage): no focused window" }
+            guard CFEqual(fw, window) else { return "\(stage): another window took focus (\u{201C}\(title(fw).prefix(40))\u{201D}, \(role(fw)))" }
             guard let fe = element(axApp, kAXFocusedUIElementAttribute) else { return "\(stage): no focused field" }
             guard inputRoles.contains(role(fe)) else { return "\(stage): the focused element is a \(role(fe)), not a text field" }
+            guard CFEqual(fe, input) else { return "\(stage): another text field has focus (\u{201C}\(label(fe).prefix(40))\u{201D})" }
             if let w = windowOf(fe), !CFEqual(w, window) { return "\(stage): the focused field is in another window" }
-            if place.tab != nil, AXMatch.score(AXMatch.Place(title: title(window), document: str(window, kAXDocumentAttribute) ?? "", screen: ""), t.hint).score < 1.5,
-               title(window) != place.place.title { return "\(stage): the tab did not switch" }
+            if let tab = place.tab, !tabSelected(tab), !tabTitles(window, selected: true).contains(place.place.title) { return "\(stage): the tab did not switch" }
             if muxRestore != nil, let p = t.pane, !Mux.isFocused(p) { return "\(stage): the pane lost focus" }
             return nil
         }
@@ -167,7 +183,7 @@ enum AXDelivery {
 
         // 7. Put everything back.
         await undo(saved, previousTab, muxRestore, hostPid)
-        log("restored, total \(ms(t0)) ms")
+        log("restored to \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?") (was \(saved.app?.localizedName ?? "?")), total \(ms(t0)) ms")
         return .typed(app.localizedName ?? "the app")
     }
 
@@ -204,11 +220,22 @@ enum AXDelivery {
             AXUIElementSetAttributeValue(pa, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             if let w = s.window { AXUIElementPerformAction(w, kAXRaiseAction as CFString); AXUIElementSetAttributeValue(w, kAXMainAttribute as CFString, kCFBooleanTrue) }
             if let f = s.focus { AXUIElementSetAttributeValue(f, kAXFocusedAttribute as CFString, kCFBooleanTrue) }
-            for n in 0..<60 {
-                if NSWorkspace.shared.frontmostApplication?.processIdentifier == p.processIdentifier { break }
+            var n = 0
+            while NSWorkspace.shared.frontmostApplication?.processIdentifier != p.processIdentifier, n < 80 {
                 if n == 20 { p.activate(options: []) }
+                if n == 40 {
+                    // Raise one of its windows, then ask again.
+                    if let w = s.window ?? (attr(pa, kAXWindowsAttribute) as? [AXUIElement])?.first { AXUIElementPerformAction(w, kAXRaiseAction as CFString) }
+                    AXUIElementSetAttributeValue(pa, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+                }
+                if n == 60, let url = p.bundleURL {
+                    // Last resort: what clicking its Dock icon does.
+                    NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
+                }
                 try? await Task.sleep(nanoseconds: 10_000_000)
+                n += 1
             }
+            log("restore front after \(n * 10) ms")
         } else if let w = s.window, let f = s.focus {
             // Same app (he was in it): back to his window and field.
             AXUIElementPerformAction(w, kAXRaiseAction as CFString)
@@ -241,7 +268,7 @@ enum AXDelivery {
                 if isTab(e) { tabs.append(e) }
                 if inputRoles.contains(r) {
                     ins.append(e)
-                    if let v = attr(e, kAXValueAttribute) as? String { text.append(String(v.suffix(6000))) }
+                    if let v = attr(e, kAXValueAttribute) as? String { text.append(String(v.suffix(100_000))) }
                 } else if r == "AXStaticText", text.count < 400, let v = attr(e, kAXValueAttribute) as? String { text.append(v) }
                 return true
             }
@@ -258,6 +285,17 @@ enum AXDelivery {
         return out
     }
 
+    /// Titles of a window's tabs (only the selected one with `selected`).
+    static func tabTitles(_ w: AXUIElement, selected: Bool) -> [String] {
+        var out: [String] = []
+        var budget = 3000
+        walk(w, budget: &budget) { e in
+            if isTab(e), !selected || tabSelected(e) { out.append(title(e)) }
+            return true
+        }
+        return out
+    }
+
     static func inputs(_ w: AXUIElement) -> [AXUIElement] {
         var ins: [AXUIElement] = []
         var budget = 5000
@@ -266,6 +304,21 @@ enum AXDelivery {
             return true
         }
         return ins
+    }
+
+    /// Test guard: the Claude app's page is a new, empty session (nothing of his is in it).
+    static func desktopShowsNewSession() -> Bool {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Router.desktopBundleID).first else { return false }
+        enableWebAX(app)
+        let a = AXUIElementCreateApplication(app.processIdentifier)
+        guard let w = element(a, kAXFocusedWindowAttribute) ?? (attr(a, kAXWindowsAttribute) as? [AXUIElement])?.first else { return false }
+        var found = false
+        var budget = 400
+        walk(w, budget: &budget) { e in
+            if role(e) == "AXWebArea" { let t = title(e); if t.hasPrefix("New session") || t.hasPrefix("New chat") { found = true }; return false }
+            return !found
+        }
+        return found
     }
 
     // MARK: Processes
@@ -303,7 +356,29 @@ enum AXDelivery {
         return (v as! AXUIElement)
     }
     static func role(_ e: AXUIElement) -> String { str(e, kAXRoleAttribute) ?? "?" }
-    static func title(_ e: AXUIElement) -> String { str(e, kAXTitleAttribute) ?? str(e, kAXDescriptionAttribute) ?? "" }
+    static func title(_ e: AXUIElement) -> String {
+        if let t = str(e, kAXTitleAttribute), !t.isEmpty { return t }
+        return str(e, kAXDescriptionAttribute) ?? ""
+    }
+    /// What a text field says about itself (web apps: its aria label and CSS classes).
+    static func label(_ e: AXUIElement) -> String {
+        let cls = (attr(e, "AXDOMClassList") as? [String])?.joined(separator: " ") ?? ""
+        return [str(e, kAXDescriptionAttribute) ?? "", str(e, kAXTitleAttribute) ?? "", str(e, "AXPlaceholderValue") ?? "", cls].filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// The window's text field for the chat. One field: that one. Several (an editor with a
+    /// terminal panel, a chat app with a search box): a terminal agent needs the one that
+    /// says it is a terminal; an app chat the one that says it is the prompt. Otherwise the
+    /// focused one, but only if no other field also qualifies. Unsure: nil (nothing typed).
+    static func chooseInput(_ ins: [AXUIElement], terminal: Bool) -> AXUIElement? {
+        if ins.count <= 1 { return ins.first }
+        let focused = ins.first { (attr($0, kAXFocusedAttribute) as? Bool) == true }
+        let words = terminal ? ["terminal", "xterm", "shell"] : ["prompt", "message", "reply", "chat", "ask claude", "composer"]
+        let marked = ins.filter { e in let l = label(e).lowercased(); return words.contains { l.contains($0) } }
+        if marked.count == 1 { return marked[0] }
+        if let f = focused, marked.contains(where: { CFEqual($0, f) }) { return f }
+        return nil
+    }
     static func windowOf(_ e: AXUIElement) -> AXUIElement? { element(e, kAXWindowAttribute) }
     static func isTab(_ e: AXUIElement) -> Bool {
         let r = role(e), sr = str(e, kAXSubroleAttribute) ?? ""

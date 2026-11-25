@@ -4,11 +4,12 @@ holds a `.needs-you-axtest` file. It registers with Needs You the way Claude Cod
 does (the `needs-you mcp` server plus hooks), shows a "reply" on screen, and writes
 every line typed into it to out.txt. Nothing here talks to a real chat.
 
-    cd <throwaway folder> && touch .needs-you-axtest && python3 fake-agent.py <name>
+    cd <throwaway folder> && touch .needs-you-axtest && python3 fake-agent.py <name> [folder]
 """
 import json, os, subprocess, sys, time
 
 name = sys.argv[1] if len(sys.argv) > 1 else "axtest"
+if len(sys.argv) > 2: os.chdir(sys.argv[2])
 cwd = os.getcwd()
 assert os.path.exists(".needs-you-axtest"), "not a test folder"
 env = dict(os.environ, NEEDS_YOU_AGENT="axtest")
@@ -30,9 +31,19 @@ def hook(event, **kw):
     subprocess.run([cli, "hook", event, "--agent", "axtest"], input=json.dumps({"cwd": cwd, **kw}),
                    env=env, text=True, capture_output=True, timeout=10)
 
+last = [""]
 def reply(text):
+    last[0] = text
     print("\n" + text, flush=True)
     hook("Stop", last_assistant_message=text)
+
+# The app forgets chat states when it restarts: say "idle" again every 15 s.
+import threading
+def keep_idle():
+    while True:
+        time.sleep(15)
+        if last[0]: hook("Stop", last_assistant_message=last[0])
+threading.Thread(target=keep_idle, daemon=True).start()
 
 hook("SessionStart")
 time.sleep(0.5)
