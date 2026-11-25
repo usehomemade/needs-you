@@ -56,6 +56,8 @@ Reach by voice (HM-1364): Settings → Agents → Reach by Voice connects Claude
 
 Connecting also adds hooks (`needs-you hook <event> --agent claude|codex`, found again by that command; a backup `<file>.needs-you-backup` is kept): Claude Code `~/.claude/settings.json` SessionStart, UserPromptSubmit, PostToolUse, Stop, Notification, SessionEnd; Codex `~/.codex/hooks.json` SessionStart, UserPromptSubmit, Stop. They tell the app the chat's state and recent prompts, and hand over voice messages that waited for the chat: on Stop as `{"decision":"block","reason":…}` (the agent continues with it), on UserPromptSubmit and PostToolUse as `additionalContext`. MCP tool results also carry them. Nothing is typed into a terminal.
 
+Once any chat is connected, "Hey Claude, <chat>: …" goes only to connected chats: the message waits in that chat's inbox and the island says "Queued for <chat>"; the chat gets it on its next tool call, turn end or prompt. "This one" means the connected chat he typed into or talked to last. Voicemail answers go to the connected chat in that pane or folder the same way. Until an agent is connected, the old herdr path (typing into the pane) still works; new chats still open through herdr.
+
 Turn on "Listen for Hey Claude" in the menu bar or Settings. Then say:
 
 (The wake phrase can be changed in Settings → Hey Claude → Wake phrase, e.g. "Hey Baby"; below it is written as "Hey Claude".)

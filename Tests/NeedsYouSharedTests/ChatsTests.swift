@@ -21,6 +21,7 @@ final class ChatsTests: XCTestCase {
         XCTAssertEqual(c.prompts, ["p2", "p3", "p4"])
         XCTAssertEqual(c.state, .working)
         XCTAssertTrue(c.hasHooks)
+        XCTAssertNotNil(c.lastPromptAt)
         u = ChatUpdate(event: "status", agent: "claude", agentPid: 1); u.status = "island sounds"
         c.apply(u)
         u = ChatUpdate(event: "Stop", agent: "claude", agentPid: 1); u.reply = "done"

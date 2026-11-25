@@ -9,7 +9,7 @@ import NeedsYouShared
 /// bracketed paste plus Enter, the same as typing it. The Claude desktop app is
 /// the only other target. Nothing else is ever typed into.
 struct ChatTarget: Hashable {
-    enum Kind: Hashable { case herdrAgent, herdrPane, desktop }
+    enum Kind: Hashable { case herdrAgent, herdrPane, desktop, registered }
     var kind: Kind
     var id: String        // herdr pane id, or "desktop"
     var title: String
@@ -23,10 +23,12 @@ struct ChatTarget: Hashable {
     /// kept apart so the matcher can weigh them (HM-1364).
     var label = ""
     var folder = ""
+    /// Registered chats: what it works on (status line, last prompt), for matching.
+    var detail = ""
 
     var candidate: ChatCandidate {
-        ChatCandidate(title: title, label: label, folder: folder,
-                      aliases: kind == .herdrAgent ? [] : aliases, focused: focused, isDesktop: kind == .desktop)
+        ChatCandidate(title: kind == .registered ? [title, detail].filter { !$0.isEmpty }.joined(separator: " ") : title, label: label, folder: folder,
+                      aliases: kind == .herdrAgent || kind == .registered ? [] : aliases, focused: focused, isDesktop: kind == .desktop)
     }
 }
 
@@ -44,6 +46,33 @@ enum Router {
     }
 
     // MARK: Targets
+
+    /// Chats that registered through the Needs You MCP server (HM-1364). Once any chat
+    /// has, these are the only targets: nothing is read off the screen and nothing is
+    /// typed; a message waits in the chat's inbox for its next tool call or turn end.
+    @MainActor static func registeredTargets() -> [ChatTarget] {
+        let reg = ChatRegistry.shared
+        let chats = reg.reachable
+        func used(_ c: ChatInfo) -> Date {
+            max(c.lastPromptAt ?? .distantPast, reg.lastSpokenTo[c.id] ?? .distantPast)
+        }
+        let front = chats.max { used($0) < used($1) }
+        return chats.map { c in
+            ChatTarget(kind: .registered, id: c.id, title: c.displayName,
+                       aliases: [c.status ?? "", c.prompts.last ?? ""].filter { !$0.isEmpty },
+                       focused: c.id == front?.id && used(c) > .distantPast,
+                       label: "", folder: c.folder, detail: c.summary)
+        }
+    }
+
+    /// Registered chats when there are any; else the old herdr scan (until he connects an agent).
+    static func voiceTargets(testOnly: Bool = false) async -> [ChatTarget] {
+        if !testOnly {
+            let reg = await MainActor.run { registeredTargets() }
+            if !reg.isEmpty { return reg }
+        }
+        return await targets(testOnly: testOnly)
+    }
 
     /// Tests only ever see the panes they armed, never a real chat.
     static func targets(testOnly: Bool = false) async -> [ChatTarget] {
@@ -145,6 +174,10 @@ enum Router {
             return (.send(targets[i], text), log) // named: a focus change later does not cancel it
         case .front(let i, let m):
             guard let text = message(m) else { return (.nothing("There was no message to send."), log) }
+            if i == nil, targets.first?.kind == .registered {
+                // Connected chats only: never start a chat by typing; ask which one.
+                return (.choose(Array(targets.prefix(4)), text, heardName: ""), log + "; nothing in front -> ask")
+            }
             guard let i else {
                 // No chat in front (or none open): start a new one in the home folder.
                 if !targets.contains(where: { $0.kind != .desktop }) { return (.newChat(nil, text), log) }
@@ -265,6 +298,11 @@ enum Router {
     /// Re-reads the target right before typing. Throws if it is gone, renamed,
     /// or (for "this one") no longer the chat in front.
     static func verify(_ target: ChatTarget) async throws {
+        if target.kind == .registered {
+            let alive = await MainActor.run { ChatRegistry.shared.reachable.contains { $0.id == target.id } }
+            if !alive { throw DeliveryError.failed("That chat has ended, so nothing was sent.") }
+            return
+        }
         let now = await targetsAll()
         guard let live = now.first(where: { $0.kind == target.kind && $0.id == target.id }) else {
             throw DeliveryError.failed("That chat is gone, so nothing was sent.")
@@ -291,6 +329,11 @@ enum Router {
             _ = try await run([herdr, "pane", "send-keys", target.id, "enter"], checkExit: true)
         case .desktop:
             try await pasteIntoDesktop(text)
+        case .registered:
+            await MainActor.run {
+                ChatRegistry.shared.enqueue(text, for: target.id)
+                ChatRegistry.shared.spokeTo(target.id)
+            }
         }
     }
 
