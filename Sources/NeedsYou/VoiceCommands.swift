@@ -67,7 +67,7 @@ final class VoiceCommands: ObservableObject {
         phoneListener.source = "iphone"
         for (l, other) in [(listener, phoneListener), (phoneListener, listener)] {
             let src = l === listener ? "mac" : "iphone"
-            l.onCommandPartial = { text, swap in DispatchQueue.main.async { Subtitles.shared.userPartial(text, source: src, swap: swap) } }
+            l.onCommandPartial = { text, swap in DispatchQueue.main.async { Subtitles.shared.userPartial(text, source: src, swap: swap); ModelRouter.shared.partial(text) } }
             l.onCommandLevel = { v in DispatchQueue.main.async { Subtitles.shared.level(v, .user, source: src) } }
             l.onHeard = { [weak self] text in DispatchQueue.main.async { self?.noteHeard(text) } }
             l.onWake = { [weak self, weak other] in
@@ -90,6 +90,7 @@ final class VoiceCommands: ObservableObject {
                     Sounds.shared.play(.listening)
                     self.capturing = true
                     Island.shared.wake(source: src)
+                    ModelRouter.shared.wake()
                     Subtitles.shared.userBegan(source: src)
                 }
             }
@@ -367,7 +368,7 @@ final class VoiceCommands: ObservableObject {
             if requested { return errorResponse(why) }
             return record(nil, text: "", transcript: transcript, outcome: .error, error: why)
         }
-        var (parsed, routeLog) = Router.parseLogged(transcript, targets: targets)
+        var (parsed, routeLog) = testOnly ? Router.parseLogged(transcript, targets: targets) : await Router.parseSmart(transcript, targets: targets)
         routeNote = routeLog
         defer { routeNote = nil }
         Isolation.note("route: " + routeLog)

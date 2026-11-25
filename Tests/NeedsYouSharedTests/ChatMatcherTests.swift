@@ -94,3 +94,29 @@ final class ChatMatcherTests: XCTestCase {
         XCTAssertEqual(ChatMatcher.route("this one: hi", cs).0, .front(cs.count - 1, "hi"))
     }
 }
+
+final class RouteJudgeTests: XCTestCase {
+    func testNamedStays() {
+        if case .named(2, _) = RouteJudge.decide(.named(2, "hi"), model: 0).0 {} else { XCTFail() }
+    }
+    func testFrontAgreementSends() {
+        if case .front(1, _) = RouteJudge.decide(.front(1, "hi"), model: 1).0 {} else { XCTFail() }
+    }
+    func testFrontDisagreementAsksModelFirst() {
+        guard case .choose(let idx, _, _) = RouteJudge.decide(.front(1, "hi"), model: 3).0 else { return XCTFail() }
+        XCTAssertEqual(idx, [3, 1])
+    }
+    func testThisOneIgnoresModel() {
+        if case .front(1, _) = RouteJudge.decide(.front(1, "hi"), model: 3, explicitFront: true).0 {} else { XCTFail() }
+    }
+    func testChooseAgreesWithTopSends() {
+        if case .named(2, _) = RouteJudge.decide(.choose([2, 0], "hi", heardName: "home"), model: 2).0 {} else { XCTFail() }
+    }
+    func testMemoryConfirmsModel() {
+        if case .named(0, _) = RouteJudge.decide(.choose([2, 0], "hi", heardName: "home"), model: 0, memory: 0).0 {} else { XCTFail() }
+        if case .named(3, _) = RouteJudge.decide(.front(1, "hi"), model: 3, memory: 3).0 {} else { XCTFail() }
+    }
+    func testNoModelNoMemoryUnchanged() {
+        if case .choose([2, 0], _, _) = RouteJudge.decide(.choose([2, 0], "hi", heardName: "x"), model: nil).0 {} else { XCTFail() }
+    }
+}

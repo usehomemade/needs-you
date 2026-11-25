@@ -160,6 +160,24 @@ enum Router {
     static func parseLogged(_ transcript: String, targets: [ChatTarget]) -> (Parsed, String) {
         guard let rest = Wake.afterWakeWord(transcript) else { return (.nothing("No \"\(Wake.phrase)\" in what I heard."), "no wake phrase") }
         let (route, log) = ChatMatcher.route(rest, targets.map(\.candidate), isProject: isProject)
+        return parsed(route, log: log, targets: targets)
+    }
+
+    /// The matcher, then the on-device model where the matcher is not sure (HM-1364).
+    @MainActor static func parseSmart(_ transcript: String, targets: [ChatTarget], memory: (String) -> String? = { _ in nil }) async -> (Parsed, String) {
+        guard let rest = Wake.afterWakeWord(transcript) else { return parseLogged(transcript, targets: targets) }
+        let (route, log) = ChatMatcher.route(rest, targets.map(\.candidate), isProject: isProject)
+        switch route {
+        case .named, .newChat: return parsed(route, log: log, targets: targets)
+        case .front, .choose: break
+        }
+        let mem = memory(rest).flatMap { id in targets.firstIndex { $0.id == id } }
+        let model = await ModelRouter.shared.pick(rest, targets)
+        let (judged, why) = RouteJudge.decide(route, model: model, memory: mem, explicitFront: log.hasPrefix("this one"))
+        return parsed(judged, log: why.isEmpty ? log : log + "; " + why, targets: targets)
+    }
+
+    private static func parsed(_ route: ChatMatcher.Route, log: String, targets: [ChatTarget]) -> (Parsed, String) {
 
         func message(_ m: String) -> String? {
             let text = clean(m)

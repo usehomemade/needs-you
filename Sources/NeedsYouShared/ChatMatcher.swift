@@ -210,3 +210,34 @@ public enum ChatMatcher {
         return top.map { String(format: "\"%@\" %.2f (%@)", chats[$0.index].title, $0.score, $0.field) }.joined(separator: ", ")
     }
 }
+
+/// Combines the fast matcher with the on-device model's pick (HM-1364). The model's
+/// own confidence is not trusted: a pick counts as sure when it agrees with the
+/// matcher or with what he picked before for the same words (`memory`). When they
+/// disagree, Needs You asks, with the model's pick first.
+public enum RouteJudge {
+    /// `explicitFront`: he said "this one", so the chat in front stays.
+    public static func decide(_ fast: ChatMatcher.Route, model: Int?, memory: Int? = nil, explicitFront: Bool = false) -> (ChatMatcher.Route, String) {
+        func ask(_ first: Int, _ rest: [Int], _ m: String, _ heard: String) -> ChatMatcher.Route {
+            .choose(Array(([first] + rest.filter { $0 != first }).prefix(4)), m, heardName: heard)
+        }
+        switch fast {
+        case .named, .newChat:
+            return (fast, "")
+        case .front(let i, let m):
+            if explicitFront { return (fast, "") }
+            if let mem = memory, mem == model || model == nil { return (.named(mem, m), "memory picks \(mem)") }
+            guard let j = model else { return (fast, "") }
+            if j == i { return (fast, "model agrees with front") }
+            if let mem = memory, mem == j { return (.named(j, m), "model and memory agree") }
+            return (ask(j, i.map { [$0] } ?? [], m, ""), "model picks \(j), front is \(i.map(String.init) ?? "none") -> ask")
+        case .choose(let idx, let m, let heard):
+            guard let j = model else {
+                if let mem = memory, idx.contains(mem) { return (.named(mem, m), "memory picks \(mem)") }
+                return (fast, "")
+            }
+            if j == idx.first || j == memory { return (.named(j, m), "model agrees -> \(j)") }
+            return (ask(j, idx, m, heard), "model picks \(j) -> ask")
+        }
+    }
+}
