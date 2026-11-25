@@ -1,0 +1,185 @@
+# Release (HM-1366): every push to main that changes the app becomes a new
+# version. The next version comes from the commit subjects since the last tag
+# (scripts/release/next-version.sh: "feat!:" major, "feat:" minor, else
+# patch; "[skip release]" skips). The macOS job builds, signs with Developer
+# ID, notarizes, staples, packages a DMG and a zip, signs the Sparkle update,
+# then creates the tag and the GitHub release with all three files.
+#
+# Automatic releases stay off until the repo variable RELEASES_ENABLED is
+# "true". Manual runs (workflow_dispatch) default to a dry run: everything
+# except the tag and the release, files kept as a workflow artifact.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "tools/**"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build, sign and notarize, but don't tag or publish"
+        type: boolean
+        default: true
+      version:
+        description: "Version to build (default: next from commits)"
+        type: string
+        required: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  # Where releases and the appcast live (clients read them without auth).
+  RELEASES_REPO: ${{ vars.RELEASES_REPO || github.repository }}
+  # Sparkle EdDSA public key (private key: the SPARKLE_ED_PRIVATE_KEY secret).
+  SPARKLE_ED_PUBLIC_KEY: wYYjQ7uDp9GE+AmmweId60H54/5TXsRpCVWch7K6/Jg=
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || vars.RELEASES_ENABLED == 'true'
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          v=${INPUT_VERSION:-$(scripts/release/next-version.sh)}
+          if [ -z "$v" ]; then echo "nothing to release"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          v=${v#v}
+          if [ "$DRY_RUN" != true ] && git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "::error::tag v$v exists already"; exit 1
+          fi
+          build=$(git rev-list --count HEAD)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Needs You $v ($build), dry run: $DRY_RUN" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Toolchain
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - uses: actions/cache@v4
+        if: steps.version.outputs.skip != 'true'
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Import the Developer ID certificate
+        id: cert
+        if: steps.version.outputs.skip != 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERT_P12" ]; then
+            if [ "$DRY_RUN" != true ]; then echo "::error::MACOS_CERT_P12 is not set"; exit 1; fi
+            echo "::warning::no MACOS_CERT_P12 secret: ad-hoc signature, no notarization"
+            echo "identity=-" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          kcpass=$(openssl rand -base64 24)
+          security create-keychain -p "$kcpass" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$kcpass" "$kc"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpass" "$kc" >/dev/null
+          # shellcheck disable=SC2046 # one keychain path per word
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          id=$(security find-identity -v -p codesigning "$kc" | awk '/Developer ID Application/ {print $2; exit}')
+          [ -n "$id" ] || { echo "::error::no Developer ID Application identity in the p12"; exit 1; }
+          echo "identity=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Build and sign
+        if: steps.version.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build }}
+          SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
+        run: |
+          OUT="build/Needs You.app" TIMESTAMP=$([ "$SIGN_IDENTITY" = - ] && echo 0 || echo 1) \
+          FEED_URL="https://github.com/$RELEASES_REPO/releases/latest/download/appcast.xml" \
+          ED_PUBLIC_KEY="$SPARKLE_ED_PUBLIC_KEY" scripts/bundle.sh
+          codesign -dvv "build/Needs You.app" 2>&1 | grep -E "Authority|TeamIdentifier|Runtime" || true
+
+      - name: Notarize and package
+        if: steps.version.outputs.skip != 'true'
+        env:
+          SIGN_IDENTITY: ${{ steps.cert.outputs.identity }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          notarize=0
+          if [ "$SIGN_IDENTITY" != - ]; then
+            notarize=1
+            export ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+            printf '%s\n' "$ASC_KEY_P8" > "$ASC_KEY_PATH"
+          fi
+          NOTARIZE=$notarize scripts/release/package.sh "build/Needs You.app" "${{ steps.version.outputs.version }}"
+          [ "$notarize" = 1 ] && { spctl -a -vv "build/Needs You.app"; xcrun stapler validate "dist/NeedsYou-${{ steps.version.outputs.version }}.dmg"; }
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Sparkle appcast
+        if: steps.version.outputs.skip != 'true'
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          RELEASE_NOTES_URL="https://github.com/$RELEASES_REPO/releases/tag/v$V" \
+          scripts/release/appcast.sh "dist/NeedsYou-$V.zip" "$V" "${{ steps.version.outputs.build }}" \
+            "https://github.com/$RELEASES_REPO/releases/download/v$V/NeedsYou-$V.zip" > dist/appcast.xml
+          scripts/release/cask.sh "$V" "dist/NeedsYou-$V.zip" > dist/needs-you.rb
+          shasum -a 256 dist/*.zip dist/*.dmg | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.version.outputs.skip != 'true'
+        # The org's artifact storage can be full; the release files don't depend on it.
+        continue-on-error: true
+        with:
+          name: NeedsYou-${{ steps.version.outputs.version }}
+          path: dist/
+          retention-days: 14
+
+      - name: Tag and publish the release
+        if: steps.version.outputs.skip != 'true' && env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$V" --repo "$RELEASES_REPO" --target "$GITHUB_SHA" \
+            --title "Needs You $V" --generate-notes \
+            "dist/NeedsYou-$V.dmg" "dist/NeedsYou-$V.zip" dist/appcast.xml
+
+      - name: Bump the Homebrew cask
+        if: steps.version.outputs.skip != 'true' && env.DRY_RUN != 'true' && vars.HOMEBREW_TAP != ''
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP: ${{ vars.HOMEBREW_TAP }}
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::warning::no HOMEBREW_TAP_TOKEN: cask not bumped"; exit 0; fi
+          gh repo clone "$TAP" tap -- --depth 1
+          mkdir -p tap/Casks && cp dist/needs-you.rb tap/Casks/needs-you.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/needs-you.rb
+          git commit -m "needs-you $V"
+          git push
