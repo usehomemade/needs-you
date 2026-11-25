@@ -66,6 +66,8 @@ final class Island: ObservableObject {
     @Published private(set) var reduceMotion = false
     /// Sending: the chat it goes to, and the countdown during which "cancel" stops it.
     @Published private(set) var sendTarget = ""
+    /// Shown next to the check: "Queued for orchard" (HM-1364).
+    @Published private(set) var doneNote = ""
     @Published private(set) var sendStart = Date()
     @Published private(set) var sendSeconds = 2.0
 
@@ -178,7 +180,15 @@ final class Island: ObservableObject {
     /// Finished well: a check, then it folds back in. Never pops up from idle.
     func done() {
         guard mode != .idle, mode != .error else { return }
+        doneNote = ""
         go(.done)
+    }
+
+    /// A voice message waits in a chat's inbox until its next tool call or turn end.
+    func queued(for name: String) {
+        guard Subtitles.enabled else { return }
+        doneNote = "Queued for " + name
+        go(.done, retrigger: true)
     }
 
     /// One line of cause, one line of fix.
@@ -218,6 +228,7 @@ final class Island: ObservableObject {
         switch status {
         case "answered", "interrupted": thinking() // Claude works on the answer
         case "spoken", "done", "sent": done()
+        case "queued": break // "Queued for …" is already showing
         case "error":
             let e = error ?? "Something went wrong."
             let mic = e.localizedCaseInsensitiveContains("microphone") || e.localizedCaseInsensitiveContains("mic ")
@@ -236,7 +247,7 @@ final class Island: ObservableObject {
     ]
 
     func spec(_ m: Mode) -> Spec {
-        let b = Self.base[m]!
+        let b = (m == .done && !doneNote.isEmpty) ? Self.base[.sending]! : Self.base[m]!
         let expanded = b.h > 40
         if geo.notch {
             let dw = max(0, geo.notchWidth - 185)
@@ -268,7 +279,7 @@ final class Island: ObservableObject {
                 guard let self, !Task.isCancelled, self.mode == .idle else { return }
                 self.panel?.orderOut(nil)
             }
-        case .done: after(1.1) { $0.go(.idle) }
+        case .done: after(doneNote.isEmpty ? 1.1 : 2.2) { $0.go(.idle) }
         case .moon: after(1.6) { $0.go(.idle) }
         case .error:
             if !reduceMotion { shakeCount += 1 }
@@ -598,7 +609,13 @@ struct IslandView: View {
                 CountdownRing(start: model.sendStart, seconds: model.sendSeconds, reduce: model.reduceMotion)
             }
         case .done:
-            ears { Orb() } right: { DrawnCheck(reduce: model.reduceMotion) }
+            ears { Orb() } right: {
+                if !model.doneNote.isEmpty {
+                    Text(model.doneNote).font(.system(size: 13, weight: .semibold)).foregroundStyle(Ink.user1)
+                        .lineLimit(1).truncationMode(.tail)
+                }
+                DrawnCheck(reduce: model.reduceMotion)
+            }
         case .moon:
             ears {
                 Image(systemName: "moon.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(Ink.muted)

@@ -1102,6 +1102,18 @@ final class Conductor: ObservableObject {
     /// every voice send while a test pane is armed.
     static func deliverAnswer(_ v: Voicemail, _ answer: String) async -> String? {
         let testOnly = !Router.armedPanes.isEmpty
+        let quote0 = DoNotDisturb.firstSentence(v.text)
+        let text0 = "\(UserName.ForAgents)'s answer to your voicemail from \(DoNotDisturb.when(v.at)) (\u{201C}\(quote0)\u{201D}): \(answer)\n" + Router.voiceSuffix
+        // A connected chat gets it in its inbox (HM-1364): the one in that pane, else the one in that folder.
+        if !testOnly {
+            let reg = await MainActor.run { ChatRegistry.shared.reachable }
+            let hit = reg.first { v.pane != nil && $0.pane?.id == v.pane }
+                ?? { let f = reg.filter { $0.cwd == v.cwd }; return f.count == 1 ? f[0] : nil }()
+            if let c = hit {
+                await MainActor.run { ChatRegistry.shared.enqueue(text0, for: c.id) }
+                return nil
+            }
+        }
         let targets = await Router.targets(testOnly: testOnly)
         var target = targets.first { $0.id == v.pane && $0.kind != .desktop }
         if target == nil, !testOnly, let folder = v.cwd?.split(separator: "/").last.map(String.init) {

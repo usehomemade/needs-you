@@ -359,7 +359,7 @@ final class VoiceCommands: ObservableObject {
         }
         handling = true
         defer { handling = false; countdown = nil; refresh() }
-        let targets = await Router.targets(testOnly: testOnly)
+        let targets = await Router.voiceTargets(testOnly: testOnly)
         if testOnly && targets.count != 1 {
             let why = Router.armedPanes.isEmpty
                 ? "Not sent: tests need exactly one armed test pane (needs-you wake-test --arm-pane <pane>)."
@@ -416,13 +416,20 @@ final class VoiceCommands: ObservableObject {
             let go = await countDown(to: Self.short(target.title))
             if !go {
                 Sounds.shared.play(.cancelled)
-                if target.kind != .desktop { previous?.activate() }
+                if target.kind != .desktop && target.kind != .registered { previous?.activate() }
                 return record(target, text: text, transcript: transcript, outcome: .cancelled, error: nil)
             }
             let delivered = text + "\n" + Router.voiceSuffix
             do {
                 try await Router.deliver(delivered, to: target)
                 Sounds.shared.play(.sent)
+                if target.kind == .registered {
+                    // Waits in the chat's inbox for its next tool call or turn end (HM-1364).
+                    Island.shared.queued(for: Self.short(target.title))
+                    var r = record(target, text: delivered, transcript: transcript, outcome: .sent, error: nil)
+                    r.status = "queued"
+                    return r
+                }
                 if target.kind != .desktop { previous?.activate() }
                 return record(target, text: delivered, transcript: transcript, outcome: .sent, error: nil)
             } catch {

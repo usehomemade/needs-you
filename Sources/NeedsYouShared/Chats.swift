@@ -73,6 +73,8 @@ public struct ChatInfo: Codable, Equatable, Identifiable, Sendable {
     public var firstSeen: Date
     public var lastSeen: Date
     public var lastActivity: Date
+    /// When he last typed into it: the chat "in front" is the one he used last.
+    public var lastPromptAt: Date?
 
     public init(id: String, agent: String, agentPid: Int32, cwd: String, now: Date = Date()) {
         self.id = id; self.agent = agent; self.agentPid = agentPid; self.cwd = cwd
@@ -124,7 +126,7 @@ public struct ChatInfo: Codable, Equatable, Identifiable, Sendable {
         }
         switch u.event {
         case "UserPromptSubmit":
-            state = .working; lastActivity = now
+            state = .working; lastActivity = now; lastPromptAt = now
             if let p = u.prompt?.trimmingCharacters(in: .whitespacesAndNewlines), !p.isEmpty {
                 prompts.append(String(p.prefix(300)))
                 if prompts.count > 3 { prompts.removeFirst(prompts.count - 3) }
