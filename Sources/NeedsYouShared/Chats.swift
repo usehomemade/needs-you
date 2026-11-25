@@ -38,6 +38,8 @@ public struct ChatUpdate: Codable, Equatable, Sendable {
     public var sessionID: String?
     public var cwd: String?
     public var pane: PaneRef?
+    /// The hook ran inside a subagent: it updates the chat, but never takes its messages.
+    public var subagent: Bool?
     /// MCP `status`: one line on what the chat is working on.
     public var status: String?
     /// UserPromptSubmit: what was typed.

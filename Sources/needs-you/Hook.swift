@@ -22,15 +22,29 @@ enum Hook {
         u.prompt = json["prompt"] as? String
         u.reply = (json["last_assistant_message"] as? String) ?? (json["last_agent_message"] as? String)
         if event == "SessionStart" || event == "SessionEnd" || event == "Notification" { u.prompt = nil }
+        // Hooks inside a subagent run in the same agent process: their output goes to the
+        // subagent, never to the chat he spoke to, so they must not take its messages.
+        u.subagent = HookSetup.isSubagent(json)
         var r = Request(command: .register)
         r.chat = u
         r.cwd = u.cwd
         // A Stop hook that already continued once must not loop: the app empties the inbox, so the next Stop finds nothing.
-        guard let resp = Client.response(r, launch: false),
-              let out = HookSetup.output(event: event, messages: resp.messages ?? []),
+        let resp = Client.response(r, launch: false)
+        let messages = resp?.messages ?? []
+        log("\(event) pid \(agent.pid) session \(u.sessionID ?? "-") subagent \(u.subagent == true) keys [\(json.keys.sorted().joined(separator: ","))] app \(resp == nil ? "down" : "ok") handed \(messages.count)")
+        guard let out = HookSetup.output(event: event, messages: messages),
               let data = try? JSONSerialization.data(withJSONObject: out, options: [.withoutEscapingSlashes]) else { exit(0) }
         FileHandle.standardOutput.write(data)
         FileHandle.standardOutput.write(Data([0x0A]))
         exit(0)
+    }
+
+    /// hooks.log in Application Support: one line per hook run (no message text).
+    static func log(_ line: String) {
+        let url = Wire.supportDir.appendingPathComponent("hooks.log")
+        let f = ISO8601DateFormatter()
+        let data = Data((f.string(from: Date()) + " " + line + "\n").utf8)
+        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() }
+        else { try? data.write(to: url) }
     }
 }

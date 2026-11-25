@@ -62,9 +62,11 @@ enum Router {
         let front = chats.max { used($0) < used($1) }
         return chats.map { c in
             ChatTarget(kind: .registered, id: c.id, title: c.displayName,
-                       aliases: [c.status ?? "", c.prompts.last ?? ""].filter { !$0.isEmpty },
+                       aliases: [],
                        focused: c.id == front?.id && used(c) > .distantPast,
-                       label: "", folder: c.folder, detail: c.summary)
+                       label: "", folder: c.folder,
+                       // The status is the title already when the chat has no folder: say it once.
+                       detail: c.folder.isEmpty ? (c.prompts.last.map { "last asked: " + String($0.prefix(120)) } ?? "") : c.summary)
         }
     }
 
@@ -354,10 +356,8 @@ enum Router {
         case .desktop:
             try await pasteIntoDesktop(text)
         case .registered:
-            await MainActor.run {
-                ChatRegistry.shared.enqueue(text, for: target.id)
-                ChatRegistry.shared.spokeTo(target.id)
-            }
+            // Never typed: the caller queues it with its history entry (VoiceCommands).
+            break
         }
     }
 

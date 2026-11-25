@@ -5,7 +5,7 @@ import Foundation
 import NeedsYouShared
 
 struct Conversation: Identifiable, Codable, Hashable {
-    enum Outcome: String, Codable { case open, answered, noAnswer = "no_answer", done, error, sent, cancelled }
+    enum Outcome: String, Codable { case open, answered, noAnswer = "no_answer", done, error, sent, cancelled, queued, delivered }
 
     var id: String
     var title: String
@@ -127,15 +127,26 @@ final class Conductor: ObservableObject {
         switch req.command {
         case .register:
             var r = Response(status: "status")
-            if let u = req.chat, HookSetup.delivers(u.event) {
-                // Messages that waited while the chat was busy: the hook hands them over.
-                let m = ChatRegistry.shared.takeInbox(ChatInfo.id(pid: u.agentPid))
+            if let u = req.chat, HookSetup.delivers(u.event), u.subagent != true {
+                // Messages that waited for the chat: the hook hands them over.
+                let m = ChatRegistry.shared.takeInbox(ChatInfo.id(pid: u.agentPid), how: u.event + " hook")
                 if !m.isEmpty { r.messages = m }
             }
             return r
         case .inbox:
             var r = Response(status: "status")
-            if let u = req.chat { r.messages = ChatRegistry.shared.takeInbox(ChatInfo.id(pid: u.agentPid)) }
+            // Test hook: put a message in a test chat's inbox (agent "test" only, never a real chat).
+            if let u = req.chat, u.event == "test-enqueue", u.agent == "test", let text = req.text {
+                let id = ChatInfo.id(pid: u.agentPid)
+                guard ChatRegistry.shared.chats[id]?.agent == "test" else { var e = Response(status: "error"); e.error = "not a test chat"; return e }
+                var c = Conversation(id: "send-test-" + UUID().uuidString.prefix(6).lowercased(), title: "To test chat", message: text, startedAt: Date())
+                c.kind = "send"; c.outcome = .queued; c.endedAt = Date()
+                save(c)
+                ChatRegistry.shared.enqueue(text, for: id, convoID: c.id)
+                r.conversationID = c.id
+                return r
+            }
+            if let u = req.chat { r.messages = ChatRegistry.shared.takeInbox(ChatInfo.id(pid: u.agentPid), how: "inbox tool") }
             return r
         case .chats:
             var r = Response(status: "status")
@@ -924,6 +935,15 @@ final class Conductor: ObservableObject {
     /// Adds a finished entry (Hey Claude sends) to the history.
     func record(_ convo: Conversation) { save(convo) }
 
+    /// A queued voice message reached its chat (HM-1364): "Queued" becomes "Delivered".
+    func markDelivered(_ id: String, how: String) {
+        guard var c = history.first(where: { $0.id == id }) else { return }
+        c.outcome = .delivered
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
+        c.route = (c.route.map { $0 + "; " } ?? "") + "delivered via \(how) at \(f.string(from: Date()))"
+        save(c)
+    }
+
     /// Asks one short question by voice for the Hey Claude router, in the queue like any ask.
     /// Part of the user's own turn, so it goes ahead of queued asks (never waits behind one).
     /// The number he pressed while "which chat?" was open (HM-1364).
@@ -1144,7 +1164,7 @@ final class Conductor: ObservableObject {
             let hit = reg.first { v.pane != nil && $0.pane?.id == v.pane }
                 ?? { let f = reg.filter { $0.cwd == v.cwd }; return f.count == 1 ? f[0] : nil }()
             if let c = hit {
-                await MainActor.run { ChatRegistry.shared.enqueue(text0, for: c.id) }
+                await MainActor.run { ChatRegistry.shared.enqueue(text0, for: c.id) } // voicemail answer
                 return nil
             }
         }

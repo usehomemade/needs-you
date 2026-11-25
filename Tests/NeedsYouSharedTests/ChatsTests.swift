@@ -111,3 +111,13 @@ final class ListChatsTests: XCTestCase {
         XCTAssertEqual(line, "2 chats are connected: orchard, working. needs-you, waiting for you, 2 messages waiting.")
     }
 }
+
+final class SubagentHookTests: XCTestCase {
+    func testSubagentHooksNeverTakeTheChatsMessages() {
+        // Keys Claude Code sent for a subagent's PostToolUse (hooks.log, 25 Nov).
+        XCTAssertTrue(HookSetup.isSubagent(["agent_id": "a5ce6f96e4b7296a6", "agent_type": "general-purpose", "session_id": "s"]))
+        XCTAssertTrue(HookSetup.isSubagent(["transcript_path": "/Users/x/.claude/projects/p/s/subagents/agent-a.jsonl"]))
+        XCTAssertFalse(HookSetup.isSubagent(["session_id": "s", "transcript_path": "/Users/x/.claude/projects/p/s.jsonl"]))
+        XCTAssertFalse(HookSetup.isSubagent(["agent_id": ""]))
+    }
+}

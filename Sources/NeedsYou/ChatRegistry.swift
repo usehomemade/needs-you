@@ -8,13 +8,20 @@ final class ChatRegistry: ObservableObject {
     static let shared = ChatRegistry()
 
     @Published private(set) var chats: [String: ChatInfo] = [:]
-    /// Messages for a chat that could not be typed in yet (it was busy): handed over by its Stop hook.
-    @Published private(set) var inbox: [String: [String]] = [:]
+    /// Voice messages waiting for a chat: handed over by its next hook (Stop,
+    /// UserPromptSubmit, PostToolUse in the chat itself) or its `inbox` tool.
+    struct Queued: Equatable { var text: String; var convoID: String? }
+    @Published private(set) var inbox: [String: [Queued]] = [:]
     /// When the user last sent each chat something by voice.
     private(set) var lastSpokenTo: [String: Date] = [:]
 
     func apply(_ u: ChatUpdate) {
         let id = ChatInfo.id(pid: u.agentPid)
+        if u.subagent == true {
+            // A subagent's hook: the chat is alive, but its state and prompts stay the main agent's.
+            chats[id]?.lastSeen = Date()
+            return
+        }
         if u.event == "SessionEnd" { remove(id); return }
         var c = chats[id] ?? ChatInfo(id: id, agent: u.agent, agentPid: u.agentPid, cwd: u.cwd ?? "")
         c.apply(u)
@@ -22,6 +29,9 @@ final class ChatRegistry: ObservableObject {
     }
 
     func remove(_ id: String) {
+        if let q = inbox[id], !q.isEmpty {
+            Isolation.note("deliver: \(id) ended with \(q.count) message(s) undelivered")
+        }
         chats[id] = nil
         inbox[id] = nil
     }
@@ -41,18 +51,23 @@ final class ChatRegistry: ObservableObject {
 
     // MARK: Inbox
 
-    func enqueue(_ text: String, for id: String) {
-        inbox[id, default: []].append(text)
+    func enqueue(_ text: String, for id: String, convoID: String? = nil) {
+        inbox[id, default: []].append(Queued(text: text, convoID: convoID))
+        Isolation.note("deliver: queued for \(id) (\(chats[id]?.state.rawValue ?? "gone"), \(inbox[id]?.count ?? 0) waiting)")
     }
 
-    func takeInbox(_ id: String) -> [String] {
+    /// Hands the waiting messages to the chat; `how` is the hook or tool that takes them.
+    func takeInbox(_ id: String, how: String) -> [String] {
         let m = inbox[id] ?? []
         inbox[id] = nil
-        return m
+        guard !m.isEmpty else { return [] }
+        Isolation.note("deliver: \(m.count) message(s) to \(id) via \(how)")
+        for q in m { if let c = q.convoID { Conductor.shared.markDelivered(c, how: how) } }
+        return m.map(\.text)
     }
 
     func spokeTo(_ id: String) { lastSpokenTo[id] = Date() }
 
     func queuedCount(_ id: String) -> Int { inbox[id]?.count ?? 0 }
-    func queued(_ id: String) -> [String] { inbox[id] ?? [] }
+    func queued(_ id: String) -> [String] { (inbox[id] ?? []).map(\.text) }
 }

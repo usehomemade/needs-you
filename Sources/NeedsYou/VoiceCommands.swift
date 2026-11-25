@@ -508,9 +508,12 @@ final class VoiceCommands: ObservableObject {
                     RoutingMemoryStore.shared.remember(words: RoutingMemory.words(rest: name), target: target, source: "sent")
                 }
                 if target.kind == .registered {
-                    // Waits in the chat's inbox for its next tool call or turn end (HM-1364).
+                    // Waits in the chat's inbox for its next hook or inbox call (HM-1364).
+                    // History says "Queued" until the chat really takes it.
+                    var r = record(target, text: delivered, transcript: transcript, outcome: .queued, error: nil)
+                    ChatRegistry.shared.enqueue(delivered, for: target.id, convoID: r.conversationID)
+                    ChatRegistry.shared.spokeTo(target.id)
                     Island.shared.queued(for: Self.short(target.title))
-                    var r = record(target, text: delivered, transcript: transcript, outcome: .sent, error: nil)
                     r.status = "queued"
                     return r
                 }

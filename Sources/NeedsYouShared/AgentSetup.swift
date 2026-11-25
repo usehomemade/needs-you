@@ -130,6 +130,14 @@ public enum HookSetup {
         }
     }
 
+    /// A hook that runs inside a subagent (Claude Code sends agent_id then; its
+    /// transcript lives under subagents/).
+    public static func isSubagent(_ input: [String: Any]) -> Bool {
+        if let id = input["agent_id"] as? String, !id.isEmpty { return true }
+        if let p = input["transcript_path"] as? String, p.contains("/subagents/") { return true }
+        return false
+    }
+
     /// Events where a hook can hand messages over.
     public static func delivers(_ event: String) -> Bool {
         ["Stop", "UserPromptSubmit", "PostToolUse", "SessionStart"].contains(event)
