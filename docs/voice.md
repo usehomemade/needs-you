@@ -21,7 +21,13 @@ Needs You types through macOS Accessibility, the same way in every app (Terminal
 5. It checks the app, window, tab and field, pastes the message as one line through a clipboard item that clipboard managers skip, checks again and presses Return.
 6. It puts back your app, window, text field, the tab that was showing, the pane and the clipboard.
 
-If any check fails, nothing is sent and the message waits in the inbox. Test hooks that never touch real chats: `needs-you voice-test "<text>" --title ax-send:<agent pid>` or `ax-scan:<agent pid>`. They only work for a chat whose folder has a `.needs-you-axtest` file, never for one in the main herdr session; `tools/ax-proof/fake-agent.py` is a stand-in chat. `--title ax-send:desktop` works only while the Claude app shows a new, empty session.
+If any check fails, nothing is sent and the message waits in the inbox. Test hooks that never touch real chats: `needs-you voice-test "<text>" --title ax-send:<agent pid>` or `ax-scan:<agent pid>`. They only work for a chat whose folder has a `.needs-you-axtest` file, never for one in the main herdr session; `tools/ax-proof/fake-agent.py` is a stand-in chat. `--title ax-send:desktop` works only while the Claude app shows a new, empty session; `ax-send:app:<bundle id>` does the same for another chat app (ChatGPT is `com.openai.codex`).
+
+Which chats can be reached:
+
+- Claude Code and Codex in a terminal, and Cursor's agent chat: connect them in Settings, Agents. Codex asks once, in the chat, to trust the new hooks; until you trust them Codex never reports that it is idle, so messages wait for its next MCP call.
+- Cursor runs its hooks in another process than its MCP server; a hook joins the MCP chat open in the same folder.
+- The Claude app and the ChatGPT app have no hooks: say their name ("Hey Claude, ChatGPT: ..."). The message goes into the chat that is open there. They are never picked as "this one".
 
 Change the phrase in Settings, Hey Claude, Wake phrase. The field warns about phrases that are very short or common ("hey you", "hey Siri"). Test listens for 20 seconds and shows what it heard.
 
