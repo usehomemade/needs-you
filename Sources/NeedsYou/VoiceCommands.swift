@@ -492,6 +492,11 @@ final class VoiceCommands: ObservableObject {
             c.title = "What did you work on?"
             Conductor.shared.record(c)
             await Conductor.shared.speakSummary()
+        case .listChats:
+            c.title = "List my chats"
+            Conductor.shared.record(c)
+            let reg = ChatRegistry.shared
+            await Conductor.shared.speakOnly(ChatsSpeech.line(reg.reachable) { reg.queuedCount($0) })
         }
         var r = Response(status: "done"); r.state = "presence: \(p)"; return r
     }

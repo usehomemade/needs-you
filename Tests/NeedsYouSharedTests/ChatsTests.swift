@@ -92,3 +92,22 @@ final class HookSetupTests: XCTestCase {
         XCTAssertNil(HookSetup.output(event: "Notification", messages: ["hi"]))
     }
 }
+
+final class ListChatsTests: XCTestCase {
+    func testParses() {
+        for s in ["list my chats", "which chats are open", "what are my chats", "show me my open chats", "my chats"] {
+            XCTAssertEqual(PresenceCommand.parse(s), .listChats, s)
+        }
+        XCTAssertNil(PresenceCommand.parse("this one: list my chats in the readme and fix the table"))
+    }
+
+    func testLine() {
+        XCTAssertTrue(ChatsSpeech.line([]).hasPrefix("No chats are connected"))
+        var a = ChatInfo(id: "pid:1", agent: "claude", agentPid: 1, cwd: "/Users/x/Projects/orchard")
+        a.state = .working
+        var b = ChatInfo(id: "pid:2", agent: "codex", agentPid: 2, cwd: "/Users/x/Projects/needs-you")
+        b.state = .waiting
+        let line = ChatsSpeech.line([a, b]) { $0 == b.id ? 2 : 0 }
+        XCTAssertEqual(line, "2 chats are connected: orchard, working. needs-you, waiting for you, 2 messages waiting.")
+    }
+}
