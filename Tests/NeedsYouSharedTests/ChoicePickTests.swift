@@ -32,6 +32,12 @@ final class ChoicePickTests: XCTestCase {
         XCTAssertNil(ChoicePick.pick("Which chat", question: q, names: names))
         XCTAssertEqual(ChoicePick.pick("Which chat? One, recipebox. Or two, Portuguese bakery business plan? Two.", question: q, names: names), 1)
         XCTAssertEqual(ChoicePick.pick("Or two, Portuguese bakery business plan. Two.", question: q, names: names), 1)
-        XCTAssertEqual(ChoicePick.stripEcho("Which chat? One recipebox", question: q), "")
+        XCTAssertEqual(ChoicePick.stripEcho("Which chat? One recipebox", question: q, names: names), "")
+        // Heard by the real listening path in clarify-test (question audio in the mic):
+        XCTAssertNil(ChoicePick.pick("Witchchat, one: Resipibox, or two: Portuguese bakery business plan.", question: q, names: names))
+        XCTAssertEqual(ChoicePick.pick("Witchchat, one: Recipebocks, or two: Portuguese bakery business plan? Two.", question: q, names: names), 1)
+        XCTAssertEqual(ChoicePick.pick("Number 2, Portuguese Bakery Business Plan. Number 2, please.", question: q, names: names), 1)
+        // His own answer that only repeats a name is not our echo.
+        XCTAssertEqual(ChoicePick.pick("Portuguese bakery business plan", question: q, names: names), 1)
     }
 }

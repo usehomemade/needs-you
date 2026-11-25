@@ -16,24 +16,54 @@ public enum ChoicePick {
         s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
     }
 
-    /// Drops our own question when the mic heard it before his answer: the leading
-    /// words that follow the question in order, when they start at its first words.
-    public static func stripEcho(_ answer: String, question: String) -> String {
-        let q = tokens(question).map(spelled), a = tokens(answer)
+    /// Drops our own question when the mic heard it before his answer. The leading
+    /// words that follow the question in order (loosely: "Witchchat" is "which chat")
+    /// count as our echo when they include one of the question's own words, not
+    /// only chat names or numbers, so "Portuguese bakery" alone stays his answer.
+    public static func stripEcho(_ answer: String, question: String, names: [String] = []) -> String {
+        let q = tokens(question).map(spelled), a = tokens(answer).map(spelled)
         guard !q.isEmpty, a.count >= 2 else { return answer }
-        var qi = 0, matched = 0, misses = 0, firstQ = -1
-        for (n, w) in a.enumerated() {
-            if let j = q[qi...].prefix(4).firstIndex(of: spelled(w)) {
-                if firstQ < 0 { firstQ = j }
-                qi = j + 1; matched = n + 1
-                if qi >= q.count { break }
-            } else {
-                misses += 1
-                if misses > 1 || n - matched > 0 { break }
-            }
+        let nameWords = Set(names.flatMap { tokens($0).map(spelled) })
+        let numberWords = Set(numbers.keys.map(spelled))
+        func same(_ x: String, _ y: String) -> Bool {
+            x == y || (min(x.count, y.count) >= 4 && similarity(x, y) >= 0.7)
         }
-        guard firstQ >= 0, firstQ <= 1, matched >= 2 else { return answer }
-        return a.dropFirst(matched).joined(separator: " ")
+        var qi = 0, end = 0, misses = 0, scaffold = false, started = false
+        var n = 0
+        while n < a.count {
+            let w = a[n]
+            var hit: (j: Int, len: Int)?
+            let window = started ? Array(q.indices.dropFirst(qi).prefix(3)) : Array(q.indices.dropFirst(qi))
+            for j in window {
+                if same(w, q[j]) { hit = (j, 1); break }
+                if j + 1 < q.count, same(w, q[j] + q[j + 1]) { hit = (j, 2); break }
+            }
+            if let h = hit {
+                started = true
+                for k in h.j..<(h.j + h.len) where !nameWords.contains(q[k]) && !numberWords.contains(q[k]) { scaffold = true }
+                qi = h.j + h.len; end = n + 1; misses = 0
+                if qi >= q.count { break }
+            } else if started {
+                misses += 1
+                if misses > 1 { break }
+            } else { break }
+            n += 1
+        }
+        guard scaffold, end >= 2 else { return answer }
+        return tokens(answer).dropFirst(end).joined(separator: " ")
+    }
+
+    static func similarity(_ a: String, _ b: String) -> Double {
+        let x = Array(a), y = Array(b)
+        var prev = Array(0...y.count)
+        for i in 1...max(x.count, 1) where !x.isEmpty {
+            var cur = [i] + Array(repeating: 0, count: y.count)
+            for j in 1...max(y.count, 1) where !y.isEmpty {
+                cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] == y[j - 1] ? 0 : 1))
+            }
+            prev = cur
+        }
+        return 1 - Double(prev[y.count]) / Double(max(x.count, y.count, 1))
     }
 
     /// Digits as the voice says them, so "2" in the question matches "two" heard.
@@ -72,7 +102,7 @@ public enum ChoicePick {
 
     /// Echo removed, then a number, then a name.
     public static func pick(_ answer: String, question: String, names: [String]) -> Int? {
-        let clean = stripEcho(answer, question: question)
+        let clean = stripEcho(answer, question: question, names: names)
         let named = name(clean, names: names)
         // "The Portuguese one": "one" is a pronoun when a name was said.
         let onlyOne = tokens(clean).allSatisfy { numbers[$0] == nil || $0 == "one" || $0 == "won" }
