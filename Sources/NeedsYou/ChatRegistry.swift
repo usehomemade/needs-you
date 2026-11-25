@@ -17,7 +17,13 @@ final class ChatRegistry: ObservableObject {
     private(set) var lastSpokenTo: [String: Date] = [:]
 
     func apply(_ u: ChatUpdate) {
-        let id = ChatInfo.id(pid: u.agentPid)
+        var id = ChatInfo.id(pid: u.agentPid)
+        // Some agents (Cursor) run their hooks from another process than their MCP server:
+        // a hook from an unknown process joins the one chat of that agent in that folder.
+        if chats[id] == nil, !["mcp", "heartbeat", "status", "tool"].contains(u.event), let cwd = u.cwd {
+            let same = chats.values.filter { $0.agent == u.agent && AXMatch.path($0.cwd) == AXMatch.path(cwd) }
+            if same.count == 1 { id = same[0].id }
+        }
         if u.subagent == true {
             // A subagent's hook: the chat is alive, but its state and prompts stay the main agent's.
             chats[id]?.lastSeen = Date()

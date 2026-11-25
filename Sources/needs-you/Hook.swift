@@ -15,12 +15,12 @@ enum Hook {
         let env = ProcessInfo.processInfo.environment
         let agent = AgentProcess.agent()
         var u = ChatUpdate(event: event, agent: AgentProcess.kind(comm: agent.comm, hint: agentHint, env: env), agentPid: agent.pid)
-        u.sessionID = json["session_id"] as? String
-        u.cwd = (json["cwd"] as? String) ?? FileManager.default.currentDirectoryPath
+        u.sessionID = (json["session_id"] as? String) ?? (json["conversation_id"] as? String)
+        u.cwd = (json["cwd"] as? String) ?? (json["workspace_roots"] as? [String])?.first ?? FileManager.default.currentDirectoryPath
         u.pane = PaneRef.from(env: env)
         u.transcriptPath = json["transcript_path"] as? String
         u.prompt = json["prompt"] as? String
-        u.reply = (json["last_assistant_message"] as? String) ?? (json["last_agent_message"] as? String)
+        u.reply = (json["last_assistant_message"] as? String) ?? (json["last_agent_message"] as? String) ?? (event == "AgentResponse" ? json["text"] as? String : nil)
         if event == "SessionStart" || event == "SessionEnd" || event == "Notification" { u.prompt = nil }
         // Hooks inside a subagent run in the same agent process: their output goes to the
         // subagent, never to the chat he spoke to, so they must not take its messages.
@@ -32,7 +32,7 @@ enum Hook {
         let resp = Client.response(r, launch: false)
         let messages = resp?.messages ?? []
         log("\(event) pid \(agent.pid) session \(u.sessionID ?? "-") subagent \(u.subagent == true) keys [\(json.keys.sorted().joined(separator: ","))] app \(resp == nil ? "down" : "ok") handed \(messages.count)")
-        guard let out = HookSetup.output(event: event, messages: messages),
+        guard let out = HookSetup.output(event: event, messages: messages, agent: u.agent),
               let data = try? JSONSerialization.data(withJSONObject: out, options: [.withoutEscapingSlashes]) else { exit(0) }
         FileHandle.standardOutput.write(data)
         FileHandle.standardOutput.write(Data([0x0A]))

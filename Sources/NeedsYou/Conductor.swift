@@ -298,12 +298,14 @@ final class Conductor: ObservableObject {
             //   voice-test --title ax-scan:<agent pid>            where it would go, nothing focused or typed
             // Only chats whose folder holds a `.needs-you-axtest` file: tests never touch real chats.
             let parts = (req.context ?? "").split(separator: ":").map(String.init)
-            if parts.count == 2, parts[1] == "desktop" {
-                //   voice-test "<text>" --title ax-send:desktop   the Claude app, only while it shows a new, empty session
-                guard AXDelivery.desktopShowsNewSession() else { return errorResponse("the Claude app does not show a new session: not a throwaway chat") }
+            if parts.count >= 2, parts[1] == "desktop" || parts[1] == "app" {
+                //   voice-test "<text>" --title ax-send:desktop            the Claude app, only while it shows a new, empty session
+                //   voice-test "<text>" --title ax-send:app:<bundle id>    any chat app, same rule (ChatGPT: com.openai.codex)
+                let bundle = parts[1] == "app" && parts.count == 3 ? parts[2] : Router.desktopBundleID
+                guard AXDelivery.desktopShowsNewSession(bundle) else { return errorResponse("\(bundle) does not show a new, empty chat: not a throwaway chat") }
                 AXDelivery.lastLog = []
                 let t0 = Date()
-                let out = await AXDelivery.send(parts[0] == "ax-scan" ? "" : (req.text ?? "ax test"), to: .init(hint: AXMatch.Hint(cwd: ""), pid: nil, pane: nil, bundleID: Router.desktopBundleID), dryRun: parts[0] == "ax-scan")
+                let out = await AXDelivery.send(parts[0] == "ax-scan" ? "" : (req.text ?? "ax test"), to: .init(hint: AXMatch.Hint(cwd: ""), pid: nil, pane: nil, bundleID: bundle), dryRun: parts[0] == "ax-scan")
                 var r = Response(status: "measured")
                 r.state = { switch out { case .typed(let a): return "typed into \(a)"; case .notTyped(let w): return "not typed: \(w)" } }()
                 r.transcript = String(format: "%.0f ms | ", Date().timeIntervalSince(t0) * 1000) + AXDelivery.lastLog.joined(separator: " | ")
@@ -320,7 +322,8 @@ final class Conductor: ObservableObject {
             }
             var r = Response(status: "measured")
             let t0 = Date()
-            let how = await Router.typeIntoChat(parts[0] == "ax-scan" ? "" : (req.text ?? "ax test") + "\n" + Router.voiceSuffix, id: c.id, dryRun: parts[0] == "ax-scan")
+            // No voice line: a test chat must never answer out loud.
+            let how = await Router.typeIntoChat(parts[0] == "ax-scan" ? "" : (req.text ?? "ax test"), id: c.id, dryRun: parts[0] == "ax-scan")
             let scan = parts[0] == "ax-scan"
             r.state = { switch how { case .typed(let a): return (scan ? "would type into " : "typed into ") + a; case .queued(let w): return (scan ? "would not type: " : "not typed: ") + w } }()
             r.transcript = String(format: "%.0f ms | ", Date().timeIntervalSince(t0) * 1000) + AXDelivery.lastLog.joined(separator: " | ")

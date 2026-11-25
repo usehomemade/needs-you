@@ -9,7 +9,7 @@ import NeedsYouShared
 struct ChatTarget: Hashable {
     enum Kind: Hashable { case herdrAgent, herdrPane, desktop, registered }
     var kind: Kind
-    var id: String        // herdr pane id, or "desktop"
+    var id: String        // herdr pane id, registered chat id, or a chat app's bundle id
     var title: String
     var aliases: [String] // folder name etc.
     var focused: Bool
@@ -39,6 +39,23 @@ enum Router {
     static let voiceSuffix = "(sent by voice: reply by voice with needs-you)"
     static let desktopBundleID = "com.anthropic.claudefordesktop"
 
+    /// Chat apps with no MCP registration of their own (HM-1374): reachable by name only
+    /// ("Hey Claude, ChatGPT: ..."), never as "this one"; typed into their open chat.
+    static let chatApps: [(bundle: String, title: String, aliases: [String])] = [
+        (desktopBundleID, "Claude app", ["claude desktop", "claude app", "desktop"]),
+        ("com.openai.codex", "ChatGPT", ["chatgpt", "chat gpt", "codex app"]),
+        ("com.openai.chat", "ChatGPT", ["chatgpt", "chat gpt"]),
+    ]
+
+    static func appTargets() -> [ChatTarget] {
+        var seen = Set<String>()
+        return chatApps.compactMap { a in
+            guard !seen.contains(a.title), NSRunningApplication.runningApplications(withBundleIdentifier: a.bundle).first != nil else { return nil }
+            seen.insert(a.title)
+            return ChatTarget(kind: .desktop, id: a.bundle, title: a.title, aliases: a.aliases, focused: false)
+        }
+    }
+
     /// Test panes armed with `needs-you wake-test --arm-pane` (pane id -> expiry).
     /// Kept in defaults so a restart during a test does not reopen real chats.
     @MainActor static var armedPanes: [String: Date] {
@@ -58,7 +75,7 @@ enum Router {
             max(c.lastPromptAt ?? .distantPast, reg.lastSpokenTo[c.id] ?? .distantPast)
         }
         let front = chats.max { used($0) < used($1) }
-        return chats.map { c in
+        let regs = chats.map { c in
             ChatTarget(kind: .registered, id: c.id, title: c.displayName,
                        aliases: [],
                        focused: c.id == front?.id && used(c) > .distantPast,
@@ -66,6 +83,7 @@ enum Router {
                        // The status is the title already when the chat has no folder: say it once.
                        detail: c.folder.isEmpty ? (c.prompts.last.map { "last asked: " + String($0.prefix(120)) } ?? "") : c.summary)
         }
+        return regs.isEmpty ? [] : regs + appTargets()
     }
 
     /// Registered chats when there are any; else the old herdr scan (until he connects an agent).
@@ -129,11 +147,7 @@ enum Router {
             if focused { for i in out.indices { out[i].focused = false } }
             out.append(ChatTarget(kind: .herdrPane, id: pane, title: title, aliases: ["test"], focused: focused))
         }
-        if NSRunningApplication.runningApplications(withBundleIdentifier: desktopBundleID).first != nil {
-            let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == desktopBundleID
-            out.append(ChatTarget(kind: .desktop, id: "desktop", title: "Claude desktop app",
-                                  aliases: ["desktop", "claude app", "app"], focused: front))
-        }
+        out += appTargets()
         return out
     }
 
@@ -364,10 +378,10 @@ enum Router {
             case .notTyped(let why): throw DeliveryError.failed("Not typed: \(why).")
             }
         case .desktop:
-            let ax = AXDelivery.Target(hint: AXMatch.Hint(cwd: ""), pid: nil, pane: nil, bundleID: desktopBundleID)
+            let ax = AXDelivery.Target(hint: AXMatch.Hint(cwd: ""), pid: nil, pane: nil, bundleID: target.id)
             switch await AXDelivery.send(text, to: ax) {
             case .typed(let app): return .typed(app)
-            case .notTyped(let why): throw DeliveryError.failed("Not typed into the Claude app: \(why).")
+            case .notTyped(let why): throw DeliveryError.failed("Not typed into \(target.title): \(why).")
             }
         case .registered:
             // Typed when idle; on .queued the caller queues it with its history entry (VoiceCommands).

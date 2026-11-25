@@ -136,6 +136,9 @@ public struct ChatInfo: Codable, Equatable, Identifiable, Sendable {
         case "Stop":
             state = .idle; lastActivity = now
             if let r = u.reply?.trimmingCharacters(in: .whitespacesAndNewlines), !r.isEmpty { lastReply = String(r.prefix(300)) }
+        case "AgentResponse":
+            // Cursor's afterAgentResponse: the reply text, before its stop hook.
+            if let r = u.reply?.trimmingCharacters(in: .whitespacesAndNewlines), !r.isEmpty { lastReply = String(r.prefix(300)) }
         case "Notification", "PermissionRequest": state = .waiting; lastActivity = now
         case "SessionStart": state = .idle; lastActivity = now
         case "status": lastActivity = now

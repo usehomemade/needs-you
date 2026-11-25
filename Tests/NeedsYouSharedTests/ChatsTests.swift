@@ -120,4 +120,23 @@ final class SubagentHookTests: XCTestCase {
         XCTAssertFalse(HookSetup.isSubagent(["session_id": "s", "transcript_path": "/Users/x/.claude/projects/p/s.jsonl"]))
         XCTAssertFalse(HookSetup.isSubagent(["agent_id": ""]))
     }
+
+    func testCursorHooksKeepOthersAndRemoveCleanly() {
+        let mine: [String: Any] = ["version": 1, "hooks": ["stop": [["command": "./audit.sh"]]]]
+        let on = HookSetup.installCursor(mine, cli: "/x/needs-you")
+        let stop = (on["hooks"] as? [String: Any])?["stop"] as? [[String: Any]] ?? []
+        XCTAssertEqual(stop.count, 2)
+        XCTAssertTrue(HookSetup.isInstalledCursor(on))
+        XCTAssertEqual((((on["hooks"] as? [String: Any])?["beforeSubmitPrompt"] as? [[String: Any]])?.first?["command"] as? String), "'/x/needs-you' hook UserPromptSubmit --agent cursor")
+        let off = HookSetup.removeCursor(HookSetup.installCursor(on, cli: "/x/needs-you"))
+        XCTAssertFalse(HookSetup.isInstalledCursor(off))
+        XCTAssertEqual(((off["hooks"] as? [String: Any])?["stop"] as? [[String: Any]])?.count, 1)
+        XCTAssertNil((off["hooks"] as? [String: Any])?["beforeSubmitPrompt"])
+    }
+
+    func testCursorHookOutput() {
+        XCTAssertEqual(HookSetup.output(event: "Stop", messages: ["hi"], agent: "cursor")?["followup_message"] as? String, "hi")
+        XCTAssertNil(HookSetup.output(event: "Stop", messages: [], agent: "cursor"))
+        XCTAssertEqual(HookSetup.output(event: "UserPromptSubmit", messages: [], agent: "cursor")?["continue"] as? Bool, true)
+    }
 }
