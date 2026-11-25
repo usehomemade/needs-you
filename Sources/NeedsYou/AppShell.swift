@@ -202,6 +202,8 @@ extension Conversation {
         case .error: return "Error"
         case .sent: return "Sent"
         case .cancelled: return "Not sent"
+        case .queued: return "Queued"
+        case .delivered: return "Delivered"
         }
     }
 

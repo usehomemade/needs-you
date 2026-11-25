@@ -125,15 +125,6 @@ final class MCPServer {
         ["name": name, "description": desc, "inputSchema": ["type": "object", "properties": props, "required": required]]
     }
 
-    /// Voice messages that waited for this chat ride along with any tool result (HM-1364).
-    private func waiting(after tool: String) -> String {
-        guard tool != "inbox" else { return "" }
-        var r = Request(command: .inbox)
-        r.chat = update("tool")
-        guard let m = Client.response(r, launch: false)?.messages, !m.isEmpty else { return "" }
-        return "\n\nMessages from the user, sent by voice while you worked:\n" + m.joined(separator: "\n\n")
-    }
-
     private func call(_ name: String, _ a: [String: Any]) -> (String, Bool) {
         let text = (a["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         var r: Request
@@ -141,7 +132,7 @@ final class MCPServer {
         case "status":
             guard let text, !text.isEmpty else { return ("status needs text", true) }
             register("status", status: text)
-            return ("ok" + waiting(after: name), false)
+            return ("ok", false)
         case "ask":
             guard let text, !text.isEmpty else { return ("ask needs text", true) }
             r = Request(command: .ask); r.text = text
@@ -166,6 +157,6 @@ final class MCPServer {
         guard let line = Client.send(r) else { return ("Needs You is not running", true) }
         let s = String(data: line, encoding: .utf8) ?? ""
         let status = (try? LineIO.decoder.decode(Response.self, from: line))?.status ?? "error"
-        return (s + waiting(after: name), status == "error")
+        return (s, status == "error")
     }
 }
