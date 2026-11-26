@@ -820,24 +820,28 @@ private struct ThinkingDots: View {
 
 private struct Shimmer: View {
     var reduce: Bool
+    /// Half the bright band's width, in text widths.
+    static let half = 0.35
+    /// Where the bright band's middle is (0 = the text's left edge, 1 = its right edge): it starts
+    /// and ends fully outside the text, so the loop restarts on all-dim letters, without a jump.
+    static func center(_ t: Double, period: Double = 1.6) -> Double {
+        let p = (t.truncatingRemainder(dividingBy: period) + period).truncatingRemainder(dividingBy: period) / period
+        return -half + (1 + 2 * half) * p
+    }
     var body: some View {
         let text = Text("Thinking").font(.system(size: 12, weight: .semibold))
         if reduce {
             text.foregroundStyle(Ink.user1)
         } else {
+            // The gradient fills the text itself and only its end points move (HM-1416): past them it
+            // keeps its end colour, so every letter is drawn at every moment. The old one slid a
+            // band twice the text's width across it and left the letters it had passed blank.
             TimelineView(.animation(minimumInterval: 1.0 / 60)) { tl in
-                let p = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6
-                text.foregroundStyle(.clear)
-                    .overlay {
-                        GeometryReader { g in
-                            LinearGradient(stops: [.init(color: Ink.dim, location: 0), .init(color: Ink.user1, location: 0.45),
-                                                   .init(color: Ink.dim, location: 0.7), .init(color: Ink.dim, location: 1)],
-                                           startPoint: .leading, endPoint: .trailing)
-                                .frame(width: g.size.width * 2)
-                                .offset(x: g.size.width * (-1 + 2 * p))
-                        }
-                        .mask(text)
-                    }
+                let c = Self.center(tl.date.timeIntervalSinceReferenceDate)
+                text.foregroundStyle(LinearGradient(stops: [.init(color: Ink.dim, location: 0), .init(color: Ink.user1, location: 0.5),
+                                                            .init(color: Ink.dim, location: 1)],
+                                                    startPoint: UnitPoint(x: c - Self.half, y: 0.5),
+                                                    endPoint: UnitPoint(x: c + Self.half, y: 0.5)))
             }
         }
     }
