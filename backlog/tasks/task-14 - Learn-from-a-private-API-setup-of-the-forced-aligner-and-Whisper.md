@@ -4,6 +4,7 @@ title: Learn from a private API setup of the forced aligner and Whisper
 status: Done
 assignee: []
 created_date: '2026-11-23T20:11:50Z'
+updated_date: '2026-11-26T20:07:58Z'
 labels:
   - hm-1327
 dependencies: []
@@ -49,3 +50,9 @@ Ideas for Needs You (Apple Silicon):
 
 Research done (read-only on that machine). Findings are in the comment above and were handed to the Needs You agent for HM-1326. Conclusion: run CrisperWhisper2.0_small on Core ML, MLX or whisper.cpp, not that project's slow MPS path; skip the WavLM aligner on device.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Research, nothing to ship. Findings fed TASK-13 and TASK-15.
+<!-- SECTION:NOTES:END -->

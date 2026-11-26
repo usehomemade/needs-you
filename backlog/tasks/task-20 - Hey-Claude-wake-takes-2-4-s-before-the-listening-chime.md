@@ -1,12 +1,12 @@
 ---
 id: TASK-20
 title: '"Hey Claude" wake takes 2-4 s before the listening chime'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-24T17:18:08Z'
+updated_date: '2026-11-26T20:07:59Z'
 labels:
   - hm-1344
-  - needs-owner
 dependencies: []
 ordinal: 20000
 ---
@@ -48,3 +48,9 @@ The fix is on main (c16c89f) and installed. The owner still needs to test it liv
 
 Installed (needs-you 2ff5eb3). Moved to Todo + Needs owner: waiting on the owner's live test when he's home.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Fixed code is in v1.0.0 and later. Live wake debug log, 25 and 26 Nov, 75 wakes: median 0.83 s from speech onset to the wake (onset is the start of "Hey ..."), p90 2.3 s. The owner filed no new latency complaint since.
+<!-- SECTION:NOTES:END -->

@@ -4,6 +4,7 @@ title: Study open-source voice tools for coding agents, list ideas to take
 status: Done
 assignee: []
 created_date: '2026-11-25T08:35:57Z'
+updated_date: '2026-11-26T20:08:01Z'
 labels:
   - hm-1358
 dependencies: []
@@ -35,3 +36,9 @@ The owner, 25 Nov, on the ideas:
 
 The study is done.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Research, done. Ideas picked became TASK-41 and TASK-42.
+<!-- SECTION:NOTES:END -->

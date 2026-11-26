@@ -1,12 +1,12 @@
 ---
 id: TASK-31
 title: Install and auto-update its own CLAUDE.md section (user-editable)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-24T21:40:10Z'
+updated_date: '2026-11-26T20:08:00Z'
 labels:
   - hm-1355
-  - needs-owner
 dependencies: []
 ordinal: 31000
 ---
@@ -37,3 +37,9 @@ Needs owner: your CLAUDE.md still has the old hand-written "## Needs You: ask <n
 
 Waiting on the owner: Open Needs You Settings, go to Agents, click Review and Remove, then click Remove Section to delete the old hand-written section from ~/.claude/CLAUDE.md. The app now installs its own instructions file and runs, but the old section still gives agents the outdated "ask twice, then artifact" text.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Works. The owner's CLAUDE.md has only the marked needs-you block with the @needs-you.md import; the old hand-written section is gone. needs-you.md was rewritten by the app on 26 Nov after v1.6.0 and now says "Stop, Mac", so the auto-update works. AgentInstructionsTests cover it.
+<!-- SECTION:NOTES:END -->

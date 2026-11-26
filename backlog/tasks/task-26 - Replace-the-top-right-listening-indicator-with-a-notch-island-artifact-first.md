@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-11-24T19:32:35Z'
+updated_date: '2026-11-26T20:08:00Z'
 labels:
   - hm-1350
 dependencies: []
@@ -69,3 +70,9 @@ Next for the owner: say "Hey Claude" and watch the island grow at the top of thi
 
 Done (two independent checks agreed): the status island is built and merged in the needs-you repo. Commit 9650c93 "Status island at the top of the screen replaces the corner panels (HM-1350)" is on main via merge dbb9b70, and origin/main (237de05) contains it. Sources/NeedsYou/Island.swift measures the notch, the --island-demo hook and the Island style setting are in, and the installed app (built Nov 24 22:58) is running it. Later work (HM-1351 to HM-1357) builds on top of it.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Island.swift ships in v1.0.0 and later (IslandLayoutTests). audio.log on 26 Nov logs live pill states (idle, wake, listening, thinking, speaking). Pill bugs found later are their own tasks.
+<!-- SECTION:NOTES:END -->

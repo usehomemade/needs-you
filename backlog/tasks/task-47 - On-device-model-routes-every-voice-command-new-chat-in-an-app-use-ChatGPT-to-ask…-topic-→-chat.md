@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-11-26T08:34:38Z'
+updated_date: '2026-11-26T20:16:36Z'
 labels:
   - hm-1383
 dependencies: []
@@ -22,7 +23,7 @@ The owner, 26 Nov 09:33. He wants to say things like:
 
 * "Hey Claude, create a new chat on Claude desktop, ask what's the weather like"
 * "Hey Claude, use ChatGPT to ask how my business is doing"
-* "Hey Claude, how is the homemade linter going" → the connected herdr Claude Code chat working on the linter, with no name or colon.
+* "Hey Claude, how is the bakery linter going" → the connected herdr Claude Code chat working on the linter, with no name or colon.
 
 The on-device Apple model (FoundationModels) should be the router: it reads what he said plus every reachable chat and app, and returns one intent (send to a chat, new chat in an app, new chat in a project folder) plus the message to send. The agent on the other end picks it up.
 
@@ -30,7 +31,7 @@ What works today (checked in code, 26 Nov):
 
 * New chats only open as a herdr tab running claude CLI. "New chat on Claude desktop" is not supported; the Claude app and ChatGPT only get typed into the chat already open there.
 * "use ChatGPT to ask …" does not parse as a name. The model is consulted only when the regex matcher is unsure, and when it disagrees with the chat in front Needs You asks "which chat?". The whole sentence including "use ChatGPT to ask" would be sent.
-* "how is the homemade linter going" goes to the chat used last unless the model and routing memory agree on another, otherwise it asks.
+* "how is the bakery linter going" goes to the chat used last unless the model and routing memory agree on another, otherwise it asks.
 
 ### Agent notes
 * Router: Sources/NeedsYou/Router.swift (parseSmart), ModelRouter.swift (Pick only), ChatMatcher.swift, RouteJudge.
@@ -45,7 +46,7 @@ Built in worktree `a worktree (needs-you-hm1383)` (branch `hm-1383-router`, not 
 
 What changed:
 * "new chat on Claude desktop, ask …", "use ChatGPT to ask …", "ask ChatGPT …", "open ChatGPT and start a new chat …" → new chat in that app (opens the app if needed, presses its New Chat menu item or Cmd+N, waits for an empty chat, pastes, Return). Apps without the Needs You MCP get no voice line and stay in front.
-* On-device model now returns chat + newChat + message. A model pick that agrees with the message's topic words (ChatMatcher.topic) sends without asking ("how is the homemade linter going").
+* On-device model now returns chat + newChat + message. A model pick that agrees with the message's topic words (ChatMatcher.topic) sends without asking ("how is the bakery linter going").
 * `needs-you wake-test --transcript "…"` now dry-runs the live router (matcher + model + memory) over real targets and returns the route log.
 
 Waiting on the owner: installing the build restarts his running app; the auto-mode check blocked `scripts/install.sh`. Not verified live yet.
@@ -55,7 +56,7 @@ Waiting on the owner: installing the build restarts his running app; the auto-mo
 Installed (the owner ran install.sh). Dry runs on the live router, nothing sent:
 * "create new chat on claude desktop, ask whats the weather like" → app_new_chat, Claude app, "whats the weather like."
 * "use chatgpt to ask how my business doing" → app_new_chat, ChatGPT, "how my business doing."
-* "how does the homemade linter going" → only 2 chats are registered right now and no linter chat among them; it picked the home-folder chat (model and topic agree).
+* "how does the bakery linter going" → only 2 chats are registered right now and no linter chat among them; it picked the home-folder chat (model and topic agree).
 * Added "start a ChatGPT conversation about …" phrasing (unit-tested, not yet installed).
 
 Not yet tested: a real send (opens a new chat in the app and types into it).
@@ -71,7 +72,7 @@ New rule (the owner: "router should not send to any chat that it finds"; a clear
 * A name that matches nothing → says "I can't find a chat called X. Connect it, or say new chat in X." Nothing sent.
 * Unconnected herdr chats are targets again.
 
-Installed. Dry runs: atlas → asks between the two atlas chats; "how is the trip planning going" → trip planner chat; "banana terminal" → can't find; "ask homemade lint …" → asks (no linter chat is open now). 113/113 tests.
+Installed. Dry runs: atlas → asks between the two atlas chats; "how is the trip planning going" → trip planner chat; "banana terminal" → can't find; "ask bakery lint …" → asks (no linter chat is open now). 113/113 tests.
 
 ### 2026-11-26 10:58 UTC (agent)
 
@@ -95,3 +96,9 @@ Proof: 122 tests pass. Dry runs: trip planner → Weekend trip planner; router c
 
 Explainer: [private preview link removed]
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Kept Done. Shipped in v1.1.0, now v1.6.0 installed. audio.log shows the model routing real commands on 26 Nov (for example "route: model: voicemails" 17:00 UTC, "route: model: back" 19:08 UTC). Dry run on v1.6.0: an unknown chat name ("zebra") gives "no such chat" instead of a guess. IntentEvalTests, VoiceRoutingTests pass.
+<!-- SECTION:NOTES:END -->

@@ -4,6 +4,7 @@ title: Transcript setting (Verbatim, Remove fillers, Polish)
 status: Done
 assignee: []
 created_date: '2026-11-23T17:29:06Z'
+updated_date: '2026-11-26T20:07:57Z'
 labels:
   - hm-1316
 dependencies: []
@@ -33,3 +34,9 @@ Done. Installed (9ac6611) and checked with `needs-you clean-test` on 23 Nov:
 - Remove fillers (the default) only deletes: "Uh, so, um, I I think we should, uh, deploy it to to staging" becomes "So I think we should deploy it to staging". The live asks returned `transcript_verbatim` alongside it.
 - Polish gave the same result as Remove fillers, because Apple Intelligence is not available on this Mac. Settings says so in orange.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: TranscriptCleaner.swift on origin/main still has Verbatim, Remove fillers and Polish. Shipped in v1.0.0 and later, installed 1.6.0.
+<!-- SECTION:NOTES:END -->

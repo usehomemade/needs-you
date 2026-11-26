@@ -1,9 +1,10 @@
 ---
 id: TASK-69
 title: Esc closes, double Esc resets, and the pill shows it
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T16:39:49Z'
+updated_date: '2026-11-26T20:16:39Z'
 labels:
   - hm-1429
 dependencies: []
@@ -31,3 +32,9 @@ Status check (two independent checks): The feature is built and committed, but o
 
 Released in v1.6.0 (run 45876703935) and installed.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Done. 88d571c is in v1.6.0, installed. audio.log on 26 Nov 17:04 UTC shows "Escape: close ... command closed (kept, not sent)" and "Escape twice, reset: command, kept message and countdown dropped" in the app (local build of the same change). EscapeKeysTests passes.
+<!-- SECTION:NOTES:END -->

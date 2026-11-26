@@ -4,6 +4,7 @@ title: 'Build Needs You: voice prompts from agents on the Mac'
 status: Done
 assignee: []
 created_date: '2026-11-23T16:41:38Z'
+updated_date: '2026-11-26T20:07:56Z'
 labels:
   - hm-1309
 dependencies: []
@@ -37,3 +38,9 @@ Reopened: the owner wants his name said right (the right pronunciation). Adding 
 
 Name fix shipped (44f576a, reinstalled with the same signing). The app now creates its own ElevenLabs pronunciation dictionary on first use, with IPA phoneme rules that make the owner's name sound right. TTS moved to eleven_flash_v2, because flash_v2_5 ignores phoneme rules and dropped the name in tests. The transcription key term is now the owner's name. Proof: the app rendered "Hi <name>, quick question.", scribe_v3 transcribed it back as "Hi, <name>. Quick question.", and the clip played once at low volume. Two test dictionaries (needs-you-test-phoneme/alias) remain in the ElevenLabs account: the API answers DELETE with 405.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Still accurate in spirit, details superseded. ElevenLabs was replaced by local models (TASK-9). "Ask twice, then artifact" was replaced by ask once plus voicemail (TASK-28). ask/say/done ship in every release (v1.0.0 to v1.6.0, installed 1.6.0). history.json shows agent asks answered by voice on 25 and 26 Nov.
+<!-- SECTION:NOTES:END -->

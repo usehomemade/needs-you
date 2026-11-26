@@ -4,6 +4,7 @@ title: Louder, distinct sounds for each listening state
 status: Done
 assignee: []
 created_date: '2026-11-23T17:28:47Z'
+updated_date: '2026-11-26T20:07:56Z'
 labels:
   - hm-1315
 dependencies: []
@@ -26,3 +27,9 @@ One short, clearly different sound per state, audible across a room: listening s
 
 Done. Installed (9ac6611, plus a new "stopped" cue in 0bdc054). On 23 Nov the owner heard `needs-you play-sounds` live and said they were loud and distinct enough. Settings has a separate Sound Volume and a Play All Sounds button.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Superseded by the Rosewood sound set (TASK-24). The old sounds remain as "Classic" in Settings, Voice, Sounds. No repeating tick (TASK-11). Rosewood WAVs are in Resources/Sounds/Rosewood since v1.0.0.
+<!-- SECTION:NOTES:END -->

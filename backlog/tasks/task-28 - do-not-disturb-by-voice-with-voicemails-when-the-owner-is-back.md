@@ -1,12 +1,12 @@
 ---
 id: TASK-28
 title: '"do not disturb" by voice, with voicemails when the owner is back'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-24T19:43:09Z'
+updated_date: '2026-11-26T20:08:00Z'
 labels:
   - hm-1352
-  - needs-owner
 dependencies: []
 ordinal: 28000
 ---
@@ -62,3 +62,9 @@ Do not disturb with voicemails is in (commit 2914d8f on main; the app now runs m
 
 Waiting on the owner: say "Hey Claude, good night", have an agent run needs-you ask, then say "good morning" and answer the voicemail to confirm it reaches that chat. Also delete the old Needs You block in ~/.claude/CLAUDE.md (needs-you.md already has the new text). Do not disturb with voicemails and ask-once are built, merged to main (2914d8f) and installed. The live voice test has not been done yet.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Shipped in v1.0.0 and later (DoNotDisturb.swift). Live use: audio.log on 26 Nov has "dnd: on (away)" by voice at 07:21, 10:35 and 17:01 UTC, then "dnd: off". history.json has voicemail answers sent to chats on 25 and 26 Nov. The old ask-twice block is gone from the owner's CLAUDE.md (TASK-31).
+<!-- SECTION:NOTES:END -->

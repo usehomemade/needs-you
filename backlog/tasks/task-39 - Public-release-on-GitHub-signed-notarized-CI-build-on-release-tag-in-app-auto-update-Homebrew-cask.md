@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-11-25T11:42:37Z'
+updated_date: '2026-11-26T20:16:35Z'
 labels:
   - hm-1366
 dependencies: []
@@ -167,3 +168,9 @@ Brew: `brew install --cask usehomemade/tap/needs-you`
 
 Follow-up in HM-1373: the tap token for automatic cask bumps, and deleting the private `needs-you-old-history` repo.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Kept Done. The release pipeline has published v1.0.0 through v1.6.0 (tags on origin/main, last v1.6.0 at 147bc0e), and the installed app is v1.6.0, so in-app update and the release workflow work.
+<!-- SECTION:NOTES:END -->

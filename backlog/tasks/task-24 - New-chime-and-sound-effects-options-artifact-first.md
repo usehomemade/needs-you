@@ -4,6 +4,7 @@ title: New chime and sound effects (options artifact first)
 status: Done
 assignee: []
 created_date: '2026-11-24T19:30:24Z'
+updated_date: '2026-11-26T20:07:59Z'
 labels:
   - hm-1348
 dependencies: []
@@ -186,3 +187,9 @@ Waiting on the owner to listen to them live.
 
 The owner, 25 Nov: "sounds good, ty". Rosewood is live in the installed app (main 227dbf4). Done.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Rosewood ships in Resources/Sounds/Rosewood since v1.0.0 (bundled by scripts/bundle.sh). Installed 1.6.0.
+<!-- SECTION:NOTES:END -->

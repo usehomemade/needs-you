@@ -4,6 +4,7 @@ title: Clean text before speaking (paths, URLs, code, markdown)
 status: Done
 assignee: []
 created_date: '2026-11-25T12:31:51Z'
+updated_date: '2026-11-26T20:16:35Z'
 labels:
   - hm-1370
 dependencies: []
@@ -46,3 +47,9 @@ Needs owner: listen live to the next few asks and say if anything sounds wrong.
 
 Done (two independent checks agreed): speech text cleaning is on origin/main of usehomemade/needs-you, inside commit 64a46e7 "Needs You: initial public release" (the original merge 8d66677 was squashed away). Code is in SpeechText.swift with SpeechTextTests.swift, and SpeechText.spoken() is called in Conductor.swift and LocalSpeech.swift. Running the installed binary with `needs-you clean-test` turned paths, URLs, hashes, versions and units into clean spoken text, and the subtitles kept the original text.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Kept Done. Re-checked on the installed v1.6.0: `needs-you clean-test "<path, URL, hash, version>" --title speech` speaks "main dot swift", "example dot com", drops the hash and says "version 1.6.0". SpeechTextTests passes. Side finding: clean-test without --title speech runs the transcript cleaner, which turned "main.swift" into "main.Swift" and "example.com" into "example.Com".
+<!-- SECTION:NOTES:END -->

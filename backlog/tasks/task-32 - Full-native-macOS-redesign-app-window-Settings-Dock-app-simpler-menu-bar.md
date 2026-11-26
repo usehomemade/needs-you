@@ -1,12 +1,12 @@
 ---
 id: TASK-32
 title: Full native macOS redesign (app window, Settings, Dock app, simpler menu bar)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-24T21:40:13Z'
+updated_date: '2026-11-26T20:08:01Z'
 labels:
   - hm-1356
-  - needs-owner
 dependencies: []
 ordinal: 32000
 ---
@@ -42,3 +42,9 @@ Needs owner: look at the window, Settings and menu and say what to change.
 
 Waiting on the owner: Open Needs You and the screenshots at [private preview link removed]. Look at the main window, Settings and the menu bar menu, then say what to change or approve it. The redesign is merged on local main and installed on the Mac, and it waits for your design review.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Shipped in v1.0.0 and later (AppShell.swift: Dock, menu bar, Settings panes). The owner uses the main window and Settings (saved window frames). The main window was redesigned again in v1.1.0 (9fb7dcc); further Chats page work is TASK-48.
+<!-- SECTION:NOTES:END -->

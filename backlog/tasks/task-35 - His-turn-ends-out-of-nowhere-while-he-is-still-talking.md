@@ -4,6 +4,7 @@ title: His turn ends out of nowhere while he is still talking
 status: Done
 assignee: []
 created_date: '2026-11-25T11:22:52Z'
+updated_date: '2026-11-26T20:08:01Z'
 labels:
   - hm-1360
 dependencies: []
@@ -52,3 +53,9 @@ Fixed on main (merge 2b543dd), installed, app running. Needs owner's live check.
 
 The owner, 25 Nov ~14:00, live test by voice: "when I pause you wait for me, it's cool, it is all cool." Verified.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: TurnText.trailsOff ships in v1.0.0 and later (TurnTextTests). Live wake debug log on 26 Nov shows "pause kept open, the thought is not finished" during real commands.
+<!-- SECTION:NOTES:END -->

@@ -3,9 +3,10 @@ id: TASK-58
 title: >-
   Router: find chats by meaning, keep 'which chat?' a conversation, record
   unsent messages
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T12:55:47Z'
+updated_date: '2026-11-26T20:16:37Z'
 labels:
   - hm-1408
 dependencies: []
@@ -45,3 +46,9 @@ Not verified: the live voice conversation; learning after a real send. Known gap
 
 Released in v1.3.0 (commit 1e0f80e, release run 45833091952, notarized) and installed on the owner's Mac. Moved to In Review: the live voice conversation is still to be checked.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Done. In v1.3.0 (1e0f80e), installed app is v1.6.0. Real use in audio.log on 26 Nov: route lines carry "meaning" and "learned" scores (17:00, 19:08 UTC), route learning recorded a real send at 14:56 UTC, and route-matches.json was updated at 17:20 UTC. The which-chat conversation answered cancel, unclear and "the one I was using before" correctly at 17:59 UTC. RouteLearningTests, ChoicePickTests pass. One open bug is noted on TASK-66.
+<!-- SECTION:NOTES:END -->

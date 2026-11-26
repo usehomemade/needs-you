@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-11-26T08:42:33Z'
+updated_date: '2026-11-26T20:16:36Z'
 labels:
   - hm-1385
 dependencies: []
@@ -41,3 +42,9 @@ Pushed to main as a871ccd (together with the unpushed HM-1374 commits). Release 
 
 Released in Needs You v1.1.0 (tag v1.1.0, commit 8fbd5cb, release run 45807779219 succeeded). Appcast lists 1.1.0 (build 29) with NeedsYou-1.1.0.zip; DMG and zip attached. First run 45806237936 failed: the release compiler timed out type-checking a tmux expression from HM-1374; split up in 8fbd5cb.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Kept Done. Released in v1.1.0, installed app is v1.6.0. MCPServerEditTests passes.
+<!-- SECTION:NOTES:END -->

@@ -3,12 +3,12 @@ id: TASK-19
 title: >-
   Voice training section (up to 30 min with music/game/video) and switchable
   speech models
-status: To Do
+status: Backlog
 assignee: []
 created_date: '2026-11-23T22:37:41Z'
+updated_date: '2026-11-26T20:07:59Z'
 labels:
   - hm-1332
-  - needs-owner
 dependencies: []
 ordinal: 19000
 ---
@@ -157,3 +157,9 @@ Bugs to fix:
 
 Backup of the Training voiceprint: voiceprint-training-20261124.json. debugWake is on.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Training and the model switcher ship in v1.0.0 and later and were used on 24 Nov (3 sessions, 165 clips, Evaluate run). The morning plan is no longer pending, so no owner action is waiting. Of the two bugs: Training now records on the mic Needs You uses (Training.swift uses Prefs.micUID). Still open: the threshold rule ("at most 2 % of background windows") can reject too many of his own lines, and there is one voiceprint for all mics. The threshold is set by hand to 0.35. Nobody is on it, so Backlog.
+<!-- SECTION:NOTES:END -->

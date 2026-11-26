@@ -6,6 +6,7 @@ title: >-
 status: Backlog
 assignee: []
 created_date: '2026-11-25T12:59:45Z'
+updated_date: '2026-11-26T20:16:35Z'
 labels:
   - hm-1372
 dependencies: []
@@ -30,3 +31,9 @@ Likely cause: Whisper picks one language per segment. The fix idea is to detect 
 
 Status check (two independent checks): Nothing has shipped. WhisperSTT.swift still picks one language for the whole utterance. The per-sentence switching in VoiceRouting only affects spoken replies. Left to do: split speech at pauses, detect each chunk's language, transcribe each chunk in its own language, and join the parts for subtitles and transcript. Test with one Turkish, German and English sentence. Low priority, stays in Backlog.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Still Backlog. WhisperSTT.swift still picks one language per utterance; no commit since 25 Nov touches per-chunk language detection.
+<!-- SECTION:NOTES:END -->

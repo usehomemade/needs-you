@@ -1,9 +1,10 @@
 ---
 id: TASK-68
 title: Default wake phrase is "Hey Mac", not "Hey Claude"
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T16:38:02Z'
+updated_date: '2026-11-26T20:16:39Z'
 labels:
   - hm-1428
 dependencies: []
@@ -32,3 +33,9 @@ Status check (two independent checks): The change is committed locally as 544c9b
 
 Released in v1.6.0 (run 45876703935) and installed.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Done. In v1.6.0 (544c9b8), installed. `needs-you status` says "Listening for Hey Mac". Dry run "Hey Claude, I'm back" returns "No Hey Mac in what I heard", and "Hey Mac, ..." commands route. `git grep -i "hey claude"` on origin/main outside backlog/ finds nothing. WakeMatcherTests passes.
+<!-- SECTION:NOTES:END -->

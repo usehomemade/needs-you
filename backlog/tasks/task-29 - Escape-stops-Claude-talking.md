@@ -1,12 +1,12 @@
 ---
 id: TASK-29
 title: Escape stops Claude talking
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-24T20:28:10Z'
+updated_date: '2026-11-26T20:08:00Z'
 labels:
   - hm-1353
-  - needs-owner
 dependencies: []
 ordinal: 29000
 ---
@@ -35,3 +35,9 @@ Needs owner: during any `say`, press Escape once to check it stops right away.
 
 Waiting on the owner: during any Needs You say or ask, press Escape once and confirm the voice stops right away. Escape-to-stop is built, merged on main and installed, but nobody has pressed it during real speech yet.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: audio.log shows "voice: stopped by escape" during real speech on 25 Nov (5 times) and 26 Nov (3 times). Escape while he talks is extended by TASK-53 and TASK-69.
+<!-- SECTION:NOTES:END -->

@@ -4,6 +4,7 @@ title: Voice messages held as 'busy' for an idle chat in state waiting
 status: In Review
 assignee: []
 created_date: '2026-11-26T13:46:37Z'
+updated_date: '2026-11-26T20:16:38Z'
 labels:
   - hm-1412
 dependencies: []
@@ -25,3 +26,9 @@ Log: "queued for needs-you: it is busy" / "deliver: queued for pid:… (waiting,
 
 Released in v1.3.0 (commit 1e0f80e, run 45833091952) and installed. In Review until checked in real use.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Still In Review. Fix in v1.3.0 (1e0f80e), installed v1.6.0; ChatStateTests passes. Since then every queued message in audio.log was for a working chat and went in through PostToolUse; no message to a chat idle at its prompt is in the log yet. Owner check: when a Claude Code chat has finished its turn, send it a voice message and confirm it is typed in right away.
+<!-- SECTION:NOTES:END -->

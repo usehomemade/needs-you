@@ -4,6 +4,7 @@ title: Hey Claude starts a new chat when none matches
 status: Done
 assignee: []
 created_date: '2026-11-23T17:31:42Z'
+updated_date: '2026-11-26T20:07:57Z'
 labels:
   - hm-1317
 dependencies: []
@@ -31,3 +32,9 @@ Done. Installed (9ac6611, plus background test tabs in 0bdc054) and verified on 
 
 One side effect: the test agent followed the suffix and answered out loud with `needs-you ask` before its tab closed. Since 0bdc054, an ask whose caller is gone stops before asking a second time and does not publish an artifact.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Still works, now chosen by the on-device model instead of phrase patterns (TASK-56, v1.2.0 14554c4). new_chat is an intent in VoiceIntent.swift, covered by IntentJudgeTests.
+<!-- SECTION:NOTES:END -->

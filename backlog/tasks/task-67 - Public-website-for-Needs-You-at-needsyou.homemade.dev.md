@@ -1,9 +1,10 @@
 ---
 id: TASK-67
 title: Public website for Needs You at needsyou.homemade.dev
-status: In Progress
+status: In Review
 assignee: []
 created_date: '2026-11-26T16:05:08Z'
+updated_date: '2026-11-26T20:16:39Z'
 labels:
   - hm-1427
 dependencies: []
@@ -67,3 +68,9 @@ Live: phone-first rework (preview v9) deployed to https://needsyou.homemade.dev 
 
 Shipped 34b6a6b to needsyou.homemade.dev: Apple Sonoma wallpaper (light/dark), Dock with real Finder, Safari, System Settings, Ghostty, Homemade, Needs You and Trash icons; Homemade icon links to homemade.dev/home. Live check: page has the link, /scene/dock/finder.webp returns 200.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Moved from In Progress to In Review: nobody is working on it and there is no uncommitted work. The site is live from 34b6a6b. Owner check: open the site on the iPhone and on the Mac and say if it is good to keep.
+<!-- SECTION:NOTES:END -->

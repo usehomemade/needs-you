@@ -4,6 +4,7 @@ title: '''Hey Claude'' wake word + speak into any agent chat'
 status: Done
 assignee: []
 created_date: '2026-11-23T17:01:32Z'
+updated_date: '2026-11-26T20:07:56Z'
 labels:
   - hm-1313
 dependencies: []
@@ -48,3 +49,9 @@ Proof:
 
 Follow-up from the owner, filed as HM-1314: pickup from across a noisy room.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Still works, with changes since: the wake phrase is now "Hey Mac" (TASK-68, v1.6.0, 544c9b8), and chats outside herdr are reached through Accessibility (TASK-45). history.json has voice sends with outcome sent or delivered every day from 24 to 26 Nov.
+<!-- SECTION:NOTES:END -->

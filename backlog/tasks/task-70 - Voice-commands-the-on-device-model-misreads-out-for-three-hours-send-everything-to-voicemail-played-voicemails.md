@@ -3,9 +3,10 @@ id: TASK-70
 title: >-
   Voice commands the on-device model misreads ("out for three hours, send
   everything to voicemail" played voicemails)
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T17:01:58Z'
+updated_date: '2026-11-26T20:16:39Z'
 labels:
   - hm-1433
 dependencies: []
@@ -39,3 +40,9 @@ Status check (two independent checks): The fix is not shipped. It exists only as
 
 Released in v1.6.0 (run 45876703935) and installed.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Done. 147bc0e is in v1.6.0, installed. Dry runs today: "out for three hours, send everything to voicemail" -> away 180 min; "do not disturb me until 9 pm" -> away until 9 pm; "play my voicemails" -> play voicemails. Real use: a spoken "I'm back" turned do not disturb off at 19:08 UTC. AwayTimeTests passes. Side finding: the dry run "Hey Mac, I'm back" hung over 10 minutes and had to be killed; the live command works.
+<!-- SECTION:NOTES:END -->

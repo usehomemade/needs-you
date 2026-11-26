@@ -1,12 +1,12 @@
 ---
 id: TASK-18
 title: Use the iPhone as a second microphone when it is closer
-status: To Do
+status: Backlog
 assignee: []
 created_date: '2026-11-23T22:24:56Z'
+updated_date: '2026-11-26T20:07:59Z'
 labels:
   - hm-1331
-  - needs-owner
 dependencies: []
 ordinal: 18000
 ---
@@ -99,3 +99,9 @@ The test uses synthetic sources with a 37 ms offset and 100 ppm drift.
 
 Waiting on the owner: do step 5 of the needs-you morning test plan with the agent (about 5 minutes). Unlock the iPhone, keep it near you, and record the two-mic sessions so the per-mic and merge results can be measured. Current state: dual-mic listening with the iPhone Continuity mic is built, pushed and installed (needs-you 23c77c6), but the merge pipeline only has synthetic test results and no live two-mic test has run yet.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Built and shipped (TwoMic.swift, in v1.0.0 and later), but the owner has the iPhone mic switched off (iphoneMic 0). audio.log shows it last on 24 Nov. mic-choice.log has 88 picks, all Mac. The two-mic recordings and the merge test never happened. Nobody is on it, so Backlog. Reopen with TASK-4 if far-field comes back.
+<!-- SECTION:NOTES:END -->

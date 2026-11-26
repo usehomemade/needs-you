@@ -4,6 +4,7 @@ title: Speak AskUserQuestion prompts and answer them by voice
 status: Done
 assignee: []
 created_date: '2026-11-23T21:33:34Z'
+updated_date: '2026-11-26T20:07:58Z'
 labels:
   - hm-1329
 dependencies: []
@@ -39,3 +40,9 @@ Tested outside any real session:
 - Hook run with a fake AskUserQuestion payload (session "throwaway-once-test", silent input): logged "no answer (no_answer), UI shows". The history entry is no_answer, has no artifact, and has only one question turn.
 - Live timing is one try: the 20 s wait plus the spoken question, about 30 s. Before, it was two tries plus artifact publishing.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Still in use. The AskUserQuestion voice hook is a script in ~/.claude/hooks (personal setup, not part of the app), registered in the Claude Code settings. Its log shows a live run on 26 Nov 09:49 UTC: three questions spoken, an unclear answer fell back to the keyboard UI as designed. The app now installs its own Notification and permission hooks (needs-you hook ..., TASK-41).
+<!-- SECTION:NOTES:END -->

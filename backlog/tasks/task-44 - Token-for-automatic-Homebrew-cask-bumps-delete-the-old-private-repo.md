@@ -4,6 +4,7 @@ title: Token for automatic Homebrew cask bumps, delete the old private repo
 status: Done
 assignee: []
 created_date: '2026-11-25T13:13:46Z'
+updated_date: '2026-11-26T20:16:36Z'
 labels:
   - hm-1373
 dependencies: []
@@ -31,3 +32,9 @@ Done, 25 Nov:
 - The owner created the fine-grained tap token (usehomemade/homebrew-tap, Contents RW). It's stored as HOMEBREW_TAP_TOKEN in the team's secret store and as a GitHub secret on usehomemade/needs-you. Reading Casks/needs-you.rb with it returns 200, and the clipboard was cleared afterwards.
 - The owner deleted usehomemade/needs-you-old-history. The local mirror backup stays at ~/Projects/needs-you-old-history.git.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Kept Done. The cask bump step has worked since commit 986f34a (clone the tap with the token); releases v1.1.0 to v1.6.0 ran after it.
+<!-- SECTION:NOTES:END -->

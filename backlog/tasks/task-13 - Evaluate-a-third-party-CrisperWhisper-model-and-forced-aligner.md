@@ -4,6 +4,7 @@ title: Evaluate a third-party CrisperWhisper model and forced aligner
 status: Done
 assignee: []
 created_date: '2026-11-23T20:09:21Z'
+updated_date: '2026-11-26T20:07:58Z'
 labels:
   - hm-1326
 dependencies: []
@@ -45,3 +46,9 @@ Evaluated: we stay on Parakeet v2. CrisperWhisper2.0_small is slower, heavier an
 
 **Licence:** the model weights and their outputs are under its authors non-commercial research licence.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Research, nothing to ship. The app stays on Parakeet plus Whisper turbo. No CrisperWhisper code on origin/main.
+<!-- SECTION:NOTES:END -->

@@ -4,6 +4,7 @@ title: Stops listening too early on short pauses
 status: Done
 assignee: []
 created_date: '2026-11-23T16:54:41Z'
+updated_date: '2026-11-26T20:07:56Z'
 labels:
   - hm-1312
 dependencies: []
@@ -33,3 +34,9 @@ Proof: generated speech run through the real listening path in real time (new `-
 
 Not tested: the 2-minute cap.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Superseded by Silero VAD plus Smart Turn (TASK-10, TASK-15). Filler-only turns and the open-thought rule live in TurnText (TurnTextTests). The live wake debug log on 26 Nov shows turns ending on "Smart Turn 0.9x after 1.5 s pause", not mid-sentence.
+<!-- SECTION:NOTES:END -->

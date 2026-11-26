@@ -1,9 +1,10 @@
 ---
 id: TASK-40
 title: Native Turkish and German voices (downloadable per language)
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-25T11:49:16Z'
+updated_date: '2026-11-26T20:16:35Z'
 labels:
   - hm-1368
 dependencies: []
@@ -68,3 +69,9 @@ The owner approved the voices by voice (25 Nov). PR #1 squash-merged to main at 
 
 Back to In Review: merged to main (1f06483) but not yet in a released, installed build. Done once the release with it is installed and Turkish/German speak on the owner's Mac.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Done. Supertonic-3 voices for tr, de, fr, it, ru have been in every release since v1.0.0 (NativeVoices.swift, LocalSpeech.swift in tag v1.0.0). The owner approved the voices by ear on 25 Nov, and audio.log shows "tts: loaded supertonic-3" in the real app that day. Installed app is v1.6.0.
+<!-- SECTION:NOTES:END -->

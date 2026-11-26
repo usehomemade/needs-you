@@ -1,12 +1,12 @@
 ---
 id: TASK-22
 title: Big live subtitles for both sides, plus a Siri-like speaking effect
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-24T17:18:12Z'
+updated_date: '2026-11-26T20:07:59Z'
 labels:
   - hm-1346
-  - needs-owner
 dependencies: []
 ordinal: 22000
 ---
@@ -60,3 +60,9 @@ Moved to Todo + Needs owner: installed, waiting on the owner's live test when he
 
 Waiting on the owner: say "Hey Claude" to the installed Needs You app (or run `needs-you voice-test --title overlay-demo`), check the big subtitles and the edge glow for both sides, then confirm or list what to change. The subtitles and glow are built, merged to needs-you main (2ff5eb3) and installed, and only your live test is open.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Subtitles and glow ship in v1.0.0 and later (Subtitles.swift, Glow.swift). Live wake debug log on 26 Nov: "first subtitle 0.50 s after the wake". The owner uses them: he filed follow-ups from real use (TASK-36, fixed; TASK-37).
+<!-- SECTION:NOTES:END -->

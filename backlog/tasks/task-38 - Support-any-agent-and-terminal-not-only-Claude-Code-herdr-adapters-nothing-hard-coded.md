@@ -3,12 +3,12 @@ id: TASK-38
 title: >-
   Support any agent and terminal, not only Claude Code + herdr (adapters,
   nothing hard-coded)
-status: To Do
+status: In Review
 assignee: []
 created_date: '2026-11-25T11:37:24Z'
+updated_date: '2026-11-26T20:16:35Z'
 labels:
   - hm-1364
-  - needs-owner
 dependencies: []
 ordinal: 38000
 ---
@@ -45,7 +45,7 @@ The owner (voice, 25 Nov ~13:15):
 
 **Plan:** design first, as an artifact, then build.
 1. One chat registry across adapters (herdr, tmux, iTerm, Ghostty, Claude Desktop, Codex…). Each chat gets a stable short spoken handle: its name, plus a number when names clash.
-2. Matching ranks title, folder, recent activity and phonetic closeness. When the top two are close, it asks out loud ("homemade or homemade-dev?") instead of guessing.
+2. Matching ranks title, folder, recent activity and phonetic closeness. When the top two are close, it asks out loud ("bakery or bakery-dev?") instead of guessing.
 3. The island shows the target before sending (as today), and "no, the other one" re-routes.
 4. A "list my chats" voice command.
 
@@ -144,3 +144,9 @@ Silent test with a stand-in chat process: a subagent PostToolUse took nothing, N
 
 Tracker hygiene: moved from In Progress to Todo and added Needs owner, because nobody is working on it right now. The MCP, routing and AX delivery code is built and installed, and it's merged into local main at f3f4465, which isn't pushed yet. It's waiting on the owner's live test together with HM-1374. After he says "works, release", I push main, which releases automatically.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: In Review. Shipped across v1.0.0 to v1.6.0: MCP server, inbox delivery through hooks, Cursor and ChatGPT, Accessibility delivery, per-app switches. Real use in audio.log on 26 Nov: Claude Code chats got voice messages through the Stop, PostToolUse and UserPromptSubmit hooks, and a real voice message was typed into an idle herdr pane in Ghostty through Accessibility (14:56 UTC). No real delivery to a non-Claude agent (Codex, Cursor, ChatGPT) is in the logs yet. Owner check: send one voice message to a Codex or Cursor chat and confirm it arrives.
+<!-- SECTION:NOTES:END -->

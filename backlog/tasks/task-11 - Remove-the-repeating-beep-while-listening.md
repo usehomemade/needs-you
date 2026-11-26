@@ -4,6 +4,7 @@ title: Remove the repeating beep while listening
 status: Done
 assignee: []
 created_date: '2026-11-23T20:09:16Z'
+updated_date: '2026-11-26T20:07:57Z'
 labels:
   - hm-1324
 dependencies: []
@@ -30,3 +31,9 @@ Removed in e73d38c, installed. The beep was the "pause, still listening" tick: i
 
 Proof: no part of the installed build plays that tick any more. The owner hears the result in the next voice test (HM-1328).
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Still true: no pause tick in Sounds.swift on origin/main, and none in the Rosewood set.
+<!-- SECTION:NOTES:END -->

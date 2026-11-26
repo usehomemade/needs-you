@@ -4,6 +4,7 @@ title: Notch pill stuck after a reply is cut off; pill sometimes a few px off
 status: In Review
 assignee: []
 created_date: '2026-11-26T13:27:12Z'
+updated_date: '2026-11-26T20:16:38Z'
 labels:
   - hm-1410
 dependencies: []
@@ -33,3 +34,9 @@ Not verified: a live voice command end to end; a notch MacBook screen.
 
 Released in v1.3.0 (commit 1e0f80e, run 45833091952) and installed. In Review until checked in real use.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Still In Review. In v1.3.0 and later, installed v1.6.0. audio.log since then shows every speaking and sending state folding back ("pill: done -> idle (done timed out)", last at 20:10 UTC). IslandLayoutTests, SpokenEchoTests pass. Not checked on a notch MacBook screen. Owner check: on a notch screen, see that the pill sits flush with the notch.
+<!-- SECTION:NOTES:END -->

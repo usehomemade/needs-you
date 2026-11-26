@@ -1,9 +1,10 @@
 ---
 id: TASK-57
 title: Open the right System Settings page whenever Needs You needs a permission
-status: Done
+status: In Review
 assignee: []
 created_date: '2026-11-26T12:25:25Z'
+updated_date: '2026-11-26T20:16:37Z'
 labels:
   - hm-1405
 dependencies: []
@@ -37,3 +38,9 @@ Released in v1.3.0 (commit 1e0f80e, run 45833091952) and installed. In Review un
 
 Waiting on the owner: Turn off Accessibility for Needs You (v1.3.0 or later), send a voice message so it has to type, and check that System Settings opens once on a page with the Needs You switch. The auto-open code has shipped since v1.3.0 (commit 1e0f80e, also in v1.5.0), but nobody has confirmed it in real use, and the macOS 27 Accessibility link may land on the wrong page.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Back to In Review: the note above says it waits on the owner, so Done was wrong. Code ships since v1.3.0 (1e0f80e); audio.log shows "permissions: accessibility is off, opening its System Settings page" once on 26 Nov 12:32 UTC. Whether the page shows the Needs You switch is not proven. Owner check: turn off Accessibility for Needs You, send a voice message, and see that System Settings opens on the right page.
+<!-- SECTION:NOTES:END -->

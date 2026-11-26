@@ -3,12 +3,12 @@ id: TASK-27
 title: >-
   Speak in other languages (pick from English, Turkish, German, French, Italian,
   Russian)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-24T19:37:46Z'
+updated_date: '2026-11-26T20:08:00Z'
 labels:
   - hm-1351
-  - needs-owner
 dependencies: []
 ordinal: 27000
 ---
@@ -68,3 +68,9 @@ Next for the owner: turn on Turkish in Settings → Voice → Languages I Speak 
 
 Waiting on the owner: open Needs You Settings, go to Voice, then Languages I Speak, turn on Turkish, say one Turkish command, and confirm it transcribes correctly. The feature is built and installed on his Mac, but the setting is still English only, so it has not been tried live.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Shipped in v1.0.0 and later (SpokenLanguages.swift, SpokenLanguagesTests). The owner turned on Turkish (spokenLanguages "en,tr"). history.json has three Turkish voice sends on 25 Nov, and the live wake debug log has 8 subtitles detected as Turkish. Mixed-language sentences are TASK-43.
+<!-- SECTION:NOTES:END -->

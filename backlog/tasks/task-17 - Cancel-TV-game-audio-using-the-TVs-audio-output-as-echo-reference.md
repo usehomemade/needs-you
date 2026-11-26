@@ -4,6 +4,7 @@ title: Cancel TV/game audio using the TV audio output as echo reference
 status: Backlog
 assignee: []
 created_date: '2026-11-23T22:20:52Z'
+updated_date: '2026-11-26T20:07:58Z'
 labels:
   - hm-1330
 dependencies: []
@@ -35,3 +36,9 @@ Waiting on the owner: decide whether to buy a USB S/PDIF receiver (for example a
 
 Back to Backlog: the owner said on 23 Nov he doesn't want to buy hardware now (software only). Parked, not waiting on him.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Still parked: no echo-reference code on origin/main, and no S/PDIF receiver. Reopen only if the owner buys one.
+<!-- SECTION:NOTES:END -->

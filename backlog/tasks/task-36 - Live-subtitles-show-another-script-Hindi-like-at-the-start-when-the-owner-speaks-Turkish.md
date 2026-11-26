@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-11-25T11:30:15Z'
+updated_date: '2026-11-26T20:16:34Z'
 labels:
   - hm-1362
 dependencies: []
@@ -61,3 +62,9 @@ Done on main (merge 2b543dd), installed. Needs owner's live check.
 
 The owner, 25 Nov ~14:00, live test: "when I speak Turkish you understand me, when I speak German you understand me". A full Turkish sentence came through as Turkish. The leftover mixed-languages-in-one-sentence case is tracked in HM-1372.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Kept Done. Shipped since v1.0.0 (LanguagePick, Script.fits in Sources). The owner confirmed Turkish and German subtitles live on 25 Nov. Installed app is v1.6.0. 204 tests pass on origin/main d8879c9 (swift test). Mixed languages in one sentence stay in TASK-43.
+<!-- SECTION:NOTES:END -->

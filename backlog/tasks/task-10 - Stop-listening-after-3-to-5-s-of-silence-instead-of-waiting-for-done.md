@@ -4,6 +4,7 @@ title: Stop listening after 3 to 5 s of silence instead of waiting for done
 status: Done
 assignee: []
 created_date: '2026-11-23T20:09:14Z'
+updated_date: '2026-11-26T20:07:57Z'
 labels:
   - hm-1323
 dependencies: []
@@ -33,3 +34,9 @@ Listening now ends by itself: Silero VAD tracks his speech and pauses. After a 2
 - **Second live try:** a 28 s answer with deliberate pauses came through whole.
 - **Offline, his 6 reading clips:** with the 0.75 s check, the turn ended 0.8 s after his last word (old way: 3.0 s) and no "uh" pause was cut off. With 2 s / 4 s it ends about 2 to 2.5 s after his last word.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Still works. Silero and Smart Turn in TurnDetection.swift. The owner later set 1.5 s before the check and 3 s at most (judgePause 1.5, endSilence 3). Live wake debug log 26 Nov: turns end on "Smart Turn ... after 1.5 s pause" or "pause reached the limit".
+<!-- SECTION:NOTES:END -->

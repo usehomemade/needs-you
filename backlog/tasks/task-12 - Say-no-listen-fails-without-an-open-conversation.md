@@ -4,6 +4,7 @@ title: Say --no-listen fails without an open conversation
 status: Done
 assignee: []
 created_date: '2026-11-23T20:09:18Z'
+updated_date: '2026-11-26T20:07:58Z'
 labels:
   - hm-1325
 dependencies: []
@@ -31,3 +32,9 @@ Proof on the installed build:
 - `needs-you say "Standalone test." --no-listen --mute` returns `{"status":"spoken",...}`, exit 0.
 - Without `--no-listen` it still asks you to open a conversation with `ask` first.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Still works: say --no-listen speaks without an open conversation (Conductor.swift, CLI main.swift). history.json has many one-turn agent entries with outcome done on 24 to 26 Nov.
+<!-- SECTION:NOTES:END -->

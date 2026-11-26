@@ -6,6 +6,7 @@ title: >-
 status: In Review
 assignee: []
 created_date: '2026-11-26T11:25:30Z'
+updated_date: '2026-11-26T20:16:37Z'
 labels:
   - hm-1398
 dependencies: []
@@ -36,10 +37,16 @@ Open: home-chat-1's `needs-you say --no-listen` hung past 120 s (separate).
 
 ### 2026-11-26 11:31 UTC (agent)
 
-Correction (the owner: "of course I want them read out loud, that's the whole idea"): text-only reverted. Now voice messages to chat apps end with "(sent by voice from MBP: reply by voice with needs-you, for_mac "MBP")". The MCP tools ask/say/done take for_mac; Needs You on any other Mac refuses ("Not spoken: … only MBP speaks the reply") and speaks nothing. Proven with a for_mac "Some Other MacBook" say: refused, nothing spoken. The other Mac needs this version too, and the two Macs need different names.
+Correction (the owner: "of course I want them read out loud, that's the whole idea"): text-only reverted. Now voice messages to chat apps end with "(sent by voice from Desk Mac: reply by voice with needs-you, for_mac "Desk Mac")". The MCP tools ask/say/done take for_mac; Needs You on any other Mac refuses ("Not spoken: … only Desk Mac speaks the reply") and speaks nothing. Proven with a for_mac "Some Other MacBook" say: refused, nothing spoken. The other Mac needs this version too, and the two Macs need different names.
 Also fixed: answering "which chat?" with "Claude Code, needs-you chat" picked "Claude Code in your home folder"; words every chat shares (Claude, Code, chat…) no longer pick. 120 tests. Local build, not released.
 
 ### 2026-11-26 12:19 UTC (agent)
 
 Status check (two independent checks): The fix is on needs-you main in commit 14554c4, but no release has it yet. Release run 45817637324 was still running, and v1.1.0 does not contain it. Left to do: 1) Confirm the new release contains 14554c4. 2) Install it on both Macs and give them different names. 3) Send one voice message into a Claude app chat and check that only the Mac that heard it speaks the reply. 4) Fix the `needs-you say --no-listen` hang past 120 s, or split it into its own issue.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Still In Review. The fix (14554c4) is in v1.2.0 and later; installed app is v1.6.0. Needs two Macs to prove, and no log here shows it. Owner check: with Needs You on both Macs, send one voice message into a Claude app chat and confirm only the Mac that heard it speaks the reply.
+<!-- SECTION:NOTES:END -->

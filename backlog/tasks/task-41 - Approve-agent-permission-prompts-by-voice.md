@@ -4,6 +4,7 @@ title: Approve agent permission prompts by voice
 status: To Do
 assignee: []
 created_date: '2026-11-25T12:31:49Z'
+updated_date: '2026-11-26T20:16:35Z'
 labels:
   - hm-1369
   - needs-owner
@@ -19,7 +20,7 @@ Related: TASK-42 (HM-1370), TASK-34 (HM-1358)
 
 From the TASK-34 (HM-1358) study (idea 1, from handsfree-code `guard.ts:9`). The owner, 25 Nov: "approve perms prompt by voice, YES".
 
-When Claude Code asks for permission (a PermissionRequest/PreToolUse hook), Needs You asks out loud ("homemade wants to run git push. Allow?"), and his yes or no returns allow or deny. A risky-command list decides what's worth asking; DND and no answer fall back to the normal on-screen prompt. Check the existing ~/.claude/hooks/voice-ask.py first.
+When Claude Code asks for permission (a PermissionRequest/PreToolUse hook), Needs You asks out loud ("bakery wants to run git push. Allow?"), and his yes or no returns allow or deny. A risky-command list decides what's worth asking; DND and no answer fall back to the normal on-screen prompt. Check the existing ~/.claude/hooks/voice-ask.py first.
 
 ## History
 
@@ -44,3 +45,9 @@ Needs owner: enable it in Settings → Agents and try one real prompt (for examp
 
 Waiting on the owner: In a new Claude Code chat, trigger a risky permission prompt (for example, let it ask to `git push`), answer it by voice, and confirm it allowed or denied correctly. The code is on needs-you main and the hook is installed in settings.json, but no real permission prompt has gone through it yet.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Still To Do, waiting on the owner. The permission hook is installed in the agent settings and its code ships in v1.6.0 (PermissionPromptTests, PermissionHookInstallerTests pass). The only hook log entries are the 25 Nov test run; no real permission prompt has gone through it yet. Owner check: let a chat ask to run a risky command (for example git push) and answer it by voice.
+<!-- SECTION:NOTES:END -->

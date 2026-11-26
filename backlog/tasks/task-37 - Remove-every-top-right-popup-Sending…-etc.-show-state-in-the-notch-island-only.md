@@ -3,12 +3,12 @@ id: TASK-37
 title: >-
   Remove every top-right popup ("Sending…" etc.); show state in the notch island
   only
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-25T11:33:02Z'
+updated_date: '2026-11-26T20:16:35Z'
 labels:
   - hm-1363
-  - needs-owner
 dependencies: []
 ordinal: 37000
 ---
@@ -42,3 +42,9 @@ Needs owner: try one "Hey Claude, <chat>: …" and check the island countdown is
 
 Waiting on the owner: say one "Hey Claude, <chat>: ..." message and confirm the island's 2 s sending countdown is enough and no top-right popup appears. The top-right Sending panel and notification banners are removed, and the island sending state is on main and installed.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Done. No top-right popups remain: only Island.swift and Subtitles.swift create panels (grep for NSPanel and notifications), and SurfaceGuardTests passes in the 204-test run. The island sending state is in real use: audio.log shows "pill: thinking -> sending" and "countdown: 2.0 s ... Escape stops it" on 26 Nov (15:57 to 16:47 UTC) in releases since v1.0.0. Reopen if the 2 s countdown feels too short.
+<!-- SECTION:NOTES:END -->

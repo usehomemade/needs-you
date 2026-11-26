@@ -1,12 +1,12 @@
 ---
 id: TASK-25
-title: Custom wake phrase (default "Hey Claude")
-status: To Do
+title: Custom wake phrase (default now Hey Mac)
+status: Done
 assignee: []
 created_date: '2026-11-24T19:30:25Z'
+updated_date: '2026-11-26T20:08:00Z'
 labels:
   - hm-1349
-  - needs-owner
 dependencies: []
 ordinal: 25000
 ---
@@ -44,3 +44,9 @@ Unit tests: `swift test` (matcher table, incl. "hey, close that" never waking fo
 
 **For you to try live:** phrases with a 2-syllable name of 4+ letters work best ("Hey Baby", "Hey Jarvis", "Okay Computer"). Avoid short names ("Hey Bob") and phrases said on TV.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Superseded for the default: the default is now "Hey Mac" (TASK-68, v1.6.0, 544c9b8). The custom phrase setting is live: wakePhrase is "Hey Mac" in the installed app, and the live wake debug log on 26 Nov shows wakes on "Hey, Mac." WakeMatcherTests cover the matcher.
+<!-- SECTION:NOTES:END -->

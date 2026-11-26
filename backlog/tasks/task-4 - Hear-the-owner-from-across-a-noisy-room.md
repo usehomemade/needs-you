@@ -1,12 +1,12 @@
 ---
 id: TASK-4
 title: Hear the owner from across a noisy room
-status: To Do
+status: Backlog
 assignee: []
 created_date: '2026-11-23T17:26:43Z'
+updated_date: '2026-11-26T20:07:56Z'
 labels:
   - hm-1314
-  - needs-owner
 dependencies: []
 ordinal: 4000
 ---
@@ -222,3 +222,9 @@ Median time per clip: 740 ms with PS4 on, 500 ms off. 0 false wakes either way.
 
 The PS4 on/off difference is within noise. It doesn't rescue his voice under music or game audio on the Mac mic, and it adds about 250 ms. Recommendation: leave it off. The bottleneck is the far-field Mac mic with a loud background, so a closer mic (iPhone) is the next lever.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Nobody is on this, so it moves to Backlog. What shipped (all in v1.0.0 and later, installed 1.6.0): voice isolation on the gate, Silero VAD, the own-voice filter, Whisper large-v3-turbo for the wake check (setting wakeModel "wlarge+p"). PS4 stays off (ps4Enabled 0) after the 24 Nov Evaluate showed no gain. The iPhone mic is switched off (TASK-18). Still open: a wake phrase said over loud game audio from across the room. The live wake debug log on 26 Nov also shows several "wake word ignored: not his voice" lines at 0.23 to 0.33 under the 0.35 bar, which may be the owner on the webcam mic.
+<!-- SECTION:NOTES:END -->

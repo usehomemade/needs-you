@@ -1,9 +1,10 @@
 ---
 id: TASK-62
 title: Pill still gets stuck after a queued voice message; unclear if it is listening
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T14:53:07Z'
+updated_date: '2026-11-26T20:16:38Z'
 labels:
   - hm-1414
 dependencies: []
@@ -27,3 +28,9 @@ Fixed in commit d0c0485 on main (not pushed yet). Installed as a local build. 16
 
 Released in v1.5.0 (run 45847016132) and installed.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Done. Fix d0c0485 in v1.5.0, installed v1.6.0. Since then audio.log shows no stuck pill: queued sends (16:20 UTC) and every later state end in "pill: done -> idle", the last at 20:10 UTC. PillRulesTests passes.
+<!-- SECTION:NOTES:END -->

@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-11-23T20:11:52Z'
+updated_date: '2026-11-26T20:07:58Z'
 labels:
   - hm-1328
 dependencies: []
@@ -95,3 +96,9 @@ Phase 1 shipped (commits 15bf444 and 19a437c, installed).
 
 **Not solved:** a "Hey Claude" said while game voices play over him. In the live retest the owner paused the game for each try, so the 5 of 5 does not count. Phase 2 needs his decision (see HM-1314).
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Phase 1 (Silero, Smart Turn) ships in v1.0.0 and later. Phase 2, a trained wake model, was never built: the Whisper turbo wake check took its place (TASK-4). Open far-field work is in TASK-4.
+<!-- SECTION:NOTES:END -->

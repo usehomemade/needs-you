@@ -1,12 +1,12 @@
 ---
 id: TASK-21
 title: Listening closes right after waking ("only other voices")
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-24T17:18:10Z'
+updated_date: '2026-11-26T20:07:59Z'
 labels:
   - hm-1345
-  - needs-owner
 dependencies: []
 ordinal: 21000
 ---
@@ -43,3 +43,9 @@ The fix is on main (c16c89f) and installed. The owner still needs to test it liv
 
 Installed (needs-you 2ff5eb3). Moved to Todo + Needs owner: waiting on the owner's live test when he's home.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: The fix is in v1.0.0 and later. The live wake debug log has "command ended: only other voices" only on 24 Nov 17:13 to 17:15 UTC, before the fix. None since, over 50+ live commands on 25 and 26 Nov (only in silent bench runs). Skipped checks log as "speaker check skipped: too little speech".
+<!-- SECTION:NOTES:END -->

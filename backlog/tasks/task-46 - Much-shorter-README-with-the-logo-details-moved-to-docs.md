@@ -4,6 +4,7 @@ title: Much shorter README with the logo, details moved to docs/
 status: Done
 assignee: []
 created_date: '2026-11-25T14:22:00Z'
+updated_date: '2026-11-26T20:16:36Z'
 labels:
   - hm-1375
 dependencies: []
@@ -34,3 +35,9 @@ Released as Needs You 1.0.1: https://github.com/usehomemade/needs-you/releases/t
 
 The release run's cask step failed because `gh repo clone` had no git credentials. Fixed in b0f6820 (clone with the token URL, commit marked [skip release]). I bumped the cask to 1.0.1 by hand in homebrew-tap. Done.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Kept Done. README.md on origin/main is 41 lines with the logo; detail lives in docs/.
+<!-- SECTION:NOTES:END -->

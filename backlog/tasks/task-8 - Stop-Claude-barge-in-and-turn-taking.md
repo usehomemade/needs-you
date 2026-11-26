@@ -4,6 +4,7 @@ title: '"Stop, Claude" barge-in and turn-taking'
 status: Done
 assignee: []
 created_date: '2026-11-23T17:35:04Z'
+updated_date: '2026-11-26T20:07:57Z'
 labels:
   - hm-1318
 dependencies: []
@@ -37,3 +38,9 @@ Done, installed and verified live with the owner on 23 Nov (commit 0bdc054, push
 - Turn-taking (asks wait while he gives a Hey Claude command, clarify questions go first) is installed but was not tested live on its own.
 - Start of messages: the first-wake-word fix shipped in 9ac6611. New in 0bdc054: speech that starts again while a segment is closing now opens a new segment with that audio. Before, a "Hey Claude" said about 1.5 s after a pause was dropped. Proved with a generated file: the full message arrived. Pre-roll is now 1 s for both Hey Claude and ask.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: The stop phrase is now "Stop, Mac" (v1.6.0, 544c9b8). audio.log shows "voice: stopped by voice" live on 26 Nov 16:20 UTC. Escape stops speech too (TASK-29).
+<!-- SECTION:NOTES:END -->

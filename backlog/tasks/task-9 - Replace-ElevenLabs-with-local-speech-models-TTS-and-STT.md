@@ -4,6 +4,7 @@ title: Replace ElevenLabs with local speech models (TTS and STT)
 status: Done
 assignee: []
 created_date: '2026-11-23T18:32:09Z'
+updated_date: '2026-11-26T20:07:57Z'
 labels:
   - hm-1321
 dependencies: []
@@ -43,3 +44,9 @@ Done, installed and checked live with the owner. Commit 2e30fea on usehomemade/n
 
 The owner approved deleting the old ElevenLabs key. ELEVENLABS_API_KEY was removed from the team's secret store (23 Nov). Nothing in the needs-you repo references it. Revoking the key in the ElevenLabs dashboard is up to the owner.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 check: Still true. No ElevenLabs code on origin/main (only a sample sentence in SpeechTextTests). Parakeet and Kokoro still ship. Since then the default speech to text for commands and the wake check is Whisper large-v3-turbo with Parakeet (setting "wlarge+p"), and other languages use native voices (TASK-40).
+<!-- SECTION:NOTES:END -->

@@ -3,9 +3,10 @@ id: TASK-56
 title: >-
   Voice router: the on-device model decides; no regex, word lists or command
   phrases
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T11:49:28Z'
+updated_date: '2026-11-26T20:16:37Z'
 labels:
   - hm-1399
 dependencies: []
@@ -61,3 +62,9 @@ Then move to Done with the release tag.
 
 Released as v1.2.0 (commit 14554c4, run 45817637324 green in 8m51s; DMG notarized). Installed on the owner's Mac at ~/Applications/Needs You.app, version 1.2.0 build 30, running. Waiting on real voice use before Done.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26 status check: Done. Shipped in v1.2.0 (14554c4), installed app is v1.6.0. The model reads real voice commands: audio.log on 26 Nov shows "route: model: ..." lines for real commands (17:00 and 19:08 UTC), and today's dry runs routed away, until-a-time and voicemails by meaning. IntentEvalTests, IntentJudgeTests pass. Leftovers for a new task if wanted: the unused Router.pick(_:from:) still exists (Router.swift), and voicemail reading still uses a next/skip regex (Conductor.swift, around line 1273).
+<!-- SECTION:NOTES:END -->
