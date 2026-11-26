@@ -24,92 +24,115 @@ const faq = [
 >
   <section class="ny-hero">
     <div class="ny-col ny-hero-text">
-      <img class="ny-hero-icon ny-rise" src="/icons/icon-256.png" alt="" width="72" height="72" />
+      <img class="ny-hero-icon ny-rise" src="/icons/icon-256.png" alt="" width="80" height="80" />
       <h1 class="ny-rise">Talk to your agents. Your voice stays on your Mac.</h1>
-      <p class="ny-subhead ny-rise ny-rise-2">When Claude Code or Codex needs you, it asks out loud and you answer by talking. Free, open source under GPL-3.0, no account.</p>
+      <p class="ny-hero-sub ny-rise ny-rise-2">When Claude Code or Codex needs you, it asks out loud and you answer by talking. Free and open source, with no account.</p>
       <div class="ny-hero-cta ny-rise ny-rise-2">
         <a class="ny-btn ny-btn-primary" href={LATEST_URL} data-dmg><Icon name="download" /> Download for Mac</a>
         <a class="ny-btn ny-btn-secondary" href={REPO_URL}>
-          <Icon name="github" /> Star on GitHub
+          <Icon name="github" /> <span class="ny-btn-label">Star on GitHub</span><span class="ny-btn-short">GitHub</span>
           <span class="ny-count" data-stat="stars" hidden><Icon name="star" /></span>
         </a>
       </div>
       <div class="ny-rise ny-rise-3">
-        <div class="ny-cmd">
+        <div class="ny-cmd ny-hero-cmd">
           <code>{BREW}</code>
           <button class="ny-copy" type="button" data-copy={BREW} aria-label="Copy command">
             <span class="ny-copy-icon"><Icon name="copy" /></span>
             <svg class="ny-copied" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-6.5" /></svg>
           </button>
         </div>
-        <p class="ny-note ny-hero-meta"><span data-stat-box hidden>Version <span data-stat="version"></span> · </span>macOS 14 or later · Apple Silicon · Made by <a href="https://homemade.dev">Homemade</a></p>
+        <p class="ny-note ny-hero-meta"><span data-stat-box hidden>Version&nbsp;<span data-stat="version"></span> · </span>macOS&nbsp;14&nbsp;or&nbsp;later · Apple&nbsp;Silicon · Made&nbsp;by&nbsp;<a href="https://homemade.dev">Homemade</a></p>
       </div>
     </div>
     <div class="ny-rise ny-rise-3"><HeroScene /></div>
   </section>
 
-  <section class="ny-section ny-col ny-reveal" id="privacy">
+  <section class="ny-section ny-reveal" id="privacy"><div class="ny-tile">
     <h2>Nothing you say leaves your Mac.</h2>
-    <p class="ny-subhead">There's no account and no subscription. Needs You is free, and the code is open source under GPL-3.0.</p>
-    <dl class="ny-card ny-reqs">
+    <p class="ny-subhead">Your voice is turned into text on your Mac, and the replies are spoken there too. No server ever hears you.</p>
+    <ul class="ny-promise">
+      <li>
+        <Icon name="chip" size={28} />
+        <h3>Runs on your Mac</h3>
+        <p>Speech recognition, the voices and the model that picks a chat all run on Apple Silicon, with no cloud service behind them.</p>
+      </li>
+      <li>
+        <Icon name="person" size={28} />
+        <h3>No account</h3>
+        <p>There's nothing to sign up for. History, voicemails and settings are plain files in a folder only your user can open.</p>
+      </li>
+      <li>
+        <Icon name="gift" size={28} />
+        <h3>Free</h3>
+        <p>No subscription and no paid version. The app updates itself from GitHub.</p>
+      </li>
+      <li>
+        <Icon name="code" size={28} />
+        <h3>Open source</h3>
+        <p>The code is on GitHub under <a href={LICENSE_URL}>GPL-3.0</a>. Read it, build it yourself or send a fix.</p>
+      </li>
+    </ul>
+    <dl class="ny-models">
       <div><dt>Speech to text</dt><dd>Whisper large-v3-turbo or Parakeet, on the Neural Engine</dd></div>
       <div><dt>The voice</dt><dd>Kokoro for English, Supertonic for other languages</dd></div>
       <div><dt>Picking the chat</dt><dd>Apple's on-device language model</dd></div>
-      <div><dt>Network</dt><dd>Model downloads the first time, and update checks on GitHub</dd></div>
-      <div><dt>Account</dt><dd>None</dd></div>
-      <div><dt>Price</dt><dd>Free. <a href={LICENSE_URL}>GPL-3.0</a>, source on <a href={REPO_URL}>GitHub</a></dd></div>
+      <div><dt>Network</dt><dd>Only the model download on first launch, and update checks on GitHub</dd></div>
     </dl>
-    <p class="ny-lead">History, voicemails and settings are plain files in a folder only your user can open. The command line tool talks to the app over a local socket, never over the network.</p>
-  </section>
+  </div></section>
 
   <section class="ny-section ny-col ny-reveal" id="ask">
     <h2>Questions you answer by talking.</h2>
-    <p class="ny-lead">When an agent needs a decision, it runs <code>needs-you ask</code>. You hear the question, you answer, and the agent gets your words as text. Commands and links stay on screen, so the spoken part is a sentence or two.</p>
+    <p class="ny-lead">When an agent needs a decision, it runs <code>needs-you ask</code>. You hear the question, you answer, and the agent gets your words back as text. Commands and links stay on screen, so the spoken part is a sentence or two.</p>
     <pre class="ny-code"><span class="p">$</span> needs-you ask "Staging is green. Promote it to production?" --title "Promote?"
-{"{"}"status":"answered","transcript":"Yes, go ahead."{"}"}</pre>
-    <p class="ny-lead">Claude Code and Codex can use it as a command or through the MCP server. Say “Stop, Mac” to cut in. You can also let it ask before risky commands like a force-push, and answer yes or no.</p>
+<span class="o">{"{"}"status":"answered","transcript":"Yes, go ahead."{"}"}</span></pre>
+    <p class="ny-lead">Claude Code and Codex can call it as a command or through the MCP server. Say “Stop, Mac” to cut in. You can also have it ask before risky commands, like a force-push, and answer yes or no.</p>
   </section>
 
   <section class="ny-section ny-col ny-reveal" id="hey-mac">
     <h2>Say “Hey Mac” and name the chat.</h2>
-    <p class="ny-lead">It finds the chat by title, folder or terminal tab, or by what the chat is working on, and types your message in. If the agent is busy, the message waits until its turn ends.</p>
-    <dl class="ny-card ny-says">
-      <div><dt>“Hey Mac, this one: run the tests again”</dt><dd>The chat in front of you</dd></div>
-      <div><dt>“Hey Mac, docs site: add the 2.4 notes”</dt><dd>The chat in ~/code/docs-site, in whichever terminal it runs</dd></div>
-      <div><dt>“Hey Mac, new chat in website: look at the failing deploy”</dt><dd>A new terminal tab in that folder, running Claude</dd></div>
-      <div><dt>“Hey Mac, use ChatGPT to ask how to price this”</dt><dd>A new chat in the ChatGPT app</dd></div>
-    </dl>
+    <p class="ny-lead">It finds the chat by its title, folder or terminal tab, or by what it's working on, and types your message in. If the agent is busy, the message waits until its turn ends.</p>
+    <ul class="ny-said">
+      <li><q>Hey Mac, this one: run the tests again</q><span>Goes to the chat in front of you</span></li>
+      <li><q>Hey Mac, docs site: add the 2.4 notes</q><span>Goes to the chat in ~/code/docs-site, whichever terminal it's in</span></li>
+      <li><q>Hey Mac, new chat in website: look at the failing deploy</q><span>Opens a terminal tab in that folder and starts Claude</span></li>
+      <li><q>Hey Mac, use ChatGPT to ask how to price this</q><span>Starts a new chat in the ChatGPT app</span></li>
+    </ul>
     <p class="ny-lead">Before it sends, the island shows where the message is going for two seconds. Say “cancel” to stop it.</p>
   </section>
 
   <section class="ny-section ny-col ny-reveal" id="voicemail">
     <h2>If you're away, it takes a voicemail.</h2>
     <p class="ny-lead">A question nobody answers is kept with the time, the folder and the terminal tab it came from. When you're back, it reads them to you in order and sends each answer to the right chat.</p>
-    <dl class="ny-card ny-says">
-      <div><dt>“Hey Mac, good night”</dt><dd>Do not disturb. Agents can't speak or open the mic until you turn it off.</dd></div>
-      <div><dt>“Hey Mac, I'm back”</dt><dd>Reads the voicemails, one at a time</dd></div>
-      <div><dt>“Hey Mac, what did you work on last night?”</dt><dd>A short summary for each chat</dd></div>
-    </dl>
+    <ul class="ny-said">
+      <li><q>Hey Mac, good night</q><span>Do not disturb: agents can't speak or open the mic until you turn it off</span></li>
+      <li><q>Hey Mac, I'm back</q><span>Reads your voicemails, one at a time</span></li>
+      <li><q>Hey Mac, what did you work on last night?</q><span>A short summary for each chat</span></li>
+    </ul>
   </section>
 
   <section class="ny-section ny-col ny-reveal" id="start">
-    <div class="ny-card ny-how">
-      <h2 class="ny-tile-hl">Setting it up takes a few minutes.</h2>
-      <ol class="ny-steps">
-        <li><span class="ny-step-num" aria-hidden="true">1</span><span><strong>Install</strong><span class="ny-step-body">Download the DMG, or run <code>{BREW}</code>.</span></span></li>
-        <li><span class="ny-step-num" aria-hidden="true">2</span><span><strong>Allow the microphone</strong><span class="ny-step-body">The speech models download the first time you open it.</span></span></li>
-        <li><span class="ny-step-num" aria-hidden="true">3</span><span><strong>Connect your agents</strong><span class="ny-step-body">In Settings, open Agents and switch on Claude Code, Codex or the Claude app.</span></span></li>
-        <li><span class="ny-step-num" aria-hidden="true">4</span><span><strong>Try it</strong><span class="ny-step-body">Run <code>needs-you ask "Shall I deploy?"</code> in a terminal and answer out loud.</span></span></li>
-      </ol>
-      <p class="ny-actions"><a class="ny-btn ny-btn-primary" href={LATEST_URL} data-dmg>Download for Mac</a></p>
-    </div>
+    <h2>Set up in a few minutes.</h2>
+    <ol class="ny-steps">
+      <li><span class="ny-step-num" aria-hidden="true">1</span><span><strong>Install</strong><span class="ny-step-body">Download the DMG, or run <code>{BREW}</code>.</span></span></li>
+      <li><span class="ny-step-num" aria-hidden="true">2</span><span><strong>Allow the microphone</strong><span class="ny-step-body">The speech models download the first time you open it.</span></span></li>
+      <li><span class="ny-step-num" aria-hidden="true">3</span><span><strong>Connect your agents</strong><span class="ny-step-body">In Settings, open Agents and switch on Claude Code, Codex or the Claude app.</span></span></li>
+      <li><span class="ny-step-num" aria-hidden="true">4</span><span><strong>Try it</strong><span class="ny-step-body">Run <code>needs-you ask "Shall I deploy?"</code> in a terminal and answer out loud.</span></span></li>
+    </ol>
+    <dl class="ny-models ny-reqs" id="requirements">
+      <div><dt>Mac</dt><dd>Apple Silicon (M1 or later)</dd></div>
+      <div><dt>macOS</dt><dd>14 Sonoma or later</dd></div>
+      <div><dt>“Hey Mac” and picking chats by topic</dt><dd>macOS 26 with Apple Intelligence turned on</dd></div>
+      <div><dt>Typing into chats</dt><dd>Accessibility access in System Settings</dd></div>
+      <div><dt>Agents</dt><dd>Claude Code, Codex, Cursor or the Claude app</dd></div>
+    </dl>
   </section>
 
   <section class="ny-section ny-col ny-reveal" id="github">
-    <h2>Open source on GitHub.</h2>
-    <p class="ny-subhead">Licensed under GPL-3.0. If you share a changed version, it has to stay open source too.</p>
+    <h2>Built in the open.</h2>
+    <p class="ny-subhead">Every line is on GitHub. If you share a changed version, GPL‑3.0 keeps it open source too.</p>
     <div class="ny-stats">
-      <a class="ny-stat" href={`${REPO_URL}/stargazers`} data-stat-box>
+      <a class="ny-stat" href={`${REPO_URL}/stargazers`}>
         <b data-stat="stars">–</b><span>Stars on GitHub</span>
       </a>
       <a class="ny-stat" href={LATEST_URL} data-release>
@@ -120,25 +143,13 @@ const faq = [
     </div>
     <p class="ny-actions">
       <a class="ny-btn ny-btn-secondary" href={REPO_URL}><Icon name="star" /> Star the repo</a>
-      <a class="ny-btn ny-btn-secondary" href={LICENSE_URL}>License</a>
       <a class="ny-btn ny-btn-secondary" href={LATEST_URL} data-release>Release notes</a>
     </p>
   </section>
 
-  <section class="ny-section ny-col ny-reveal" id="requirements">
-    <h2>What you need.</h2>
-    <dl class="ny-card ny-reqs">
-      <div><dt>Mac</dt><dd>Apple Silicon (M1 or later)</dd></div>
-      <div><dt>macOS</dt><dd>14 Sonoma or later</dd></div>
-      <div><dt>“Hey Mac” and picking chats by topic</dt><dd>macOS 26 with Apple Intelligence turned on</dd></div>
-      <div><dt>Typing into chats</dt><dd>Accessibility access in System Settings</dd></div>
-      <div><dt>Agents</dt><dd>Claude Code, Codex, Cursor or the Claude app</dd></div>
-    </dl>
-  </section>
-
   <section class="ny-section ny-col ny-reveal" id="faq">
     <h2>Questions and answers.</h2>
-    <div class="ny-card ny-faq">
+    <div class="ny-faq">
       {faq.map((item) => (
         <details>
           <summary><span>{item.q}</span><Icon name="chevron" /></summary>
@@ -149,7 +160,7 @@ const faq = [
   </section>
 
   <section class="ny-section ny-col ny-end ny-reveal">
-    <img src="/icons/icon-128.png" alt="" width="72" height="72" style="margin:0 auto 20px;inline-size:72px" loading="lazy" />
+    <img src="/icons/icon-256.png" alt="" width="96" height="96" loading="lazy" />
     <h2>Let your agents ask.</h2>
     <p class="ny-subhead">Free and open source. Your voice stays on your Mac.</p>
     <p class="ny-actions">

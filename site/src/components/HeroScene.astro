@@ -15,7 +15,7 @@ const bars5 = Array.from({ length: 5 });
 ---
 <div class="sc" data-scene>
   <div class="sc-device">
-    <div class="sc-screen" role="img" aria-label="A MacBook screen. Claude Code fixes a rounding bug and asks “Tests pass. Ship it to staging?” out loud through Needs You. The answer “Yes, ship it.” goes back to it. Then “Hey Mac, docs site: …” types a message into Codex in another window.">
+    <div class="sc-screen" role="img" aria-label="A Mac screen. Claude Code fixes a rounding bug and asks “Tests pass. Ship it to staging?” out loud through Needs You. The answer “Yes, ship it.” goes back to it. Then “Hey Mac, docs site: …” types a message into Codex in another window.">
       <div class="sc-inner" aria-hidden="true">
         <div class="sc-menubar">
           <span class="sc-mb-left">
@@ -35,27 +35,27 @@ const bars5 = Array.from({ length: 5 });
           <pre class="sc-term"><span class="d">&gt; Some invoices are a cent off. Fix the rounding, run the tests,
   and ask me before you ship it.</span>
 
-<span class="w">⏺</span> Tax is rounded after it is added to the subtotal, so half-cents
+<span class="w">●</span> Tax is rounded after it is added to the subtotal, so half-cents
   go the wrong way on some orders.
 
-<span class="g">⏺</span> <b>Update</b>(src/billing/totals.ts)
+<span class="g">●</span> <b>Update</b>(src/billing/totals.ts)
   <span class="d">⎿  Updated src/billing/totals.ts with 2 additions and 1 removal</span>
       <span class="d">29</span>    const subtotal = sumLines(lines);
 <span class="rm">      30 -  return Math.round(subtotal * (1 + taxRate) * 100) / 100; </span>
 <span class="add">      30 +  const tax = roundHalfEven(subtotal * taxRate, 2); </span>
 <span class="add">      31 +  return toCents(subtotal) + tax; </span>
 
-<span class="g">⏺</span> <b>Bash</b>(npm test)
+<span class="g">●</span> <b>Bash</b>(npm test)
   <span class="d">⎿  Test Files  18 passed (18)
           Tests  246 passed (246)</span>
 <span data-step="ask" hidden>
-<span class="g" data-dot="ask">⏺</span> <b>needs-you - ask (MCP)</b>(question: "Tests pass. Ship it to staging?")
+<span class="g" data-dot="ask">●</span> <b>needs-you - ask (MCP)</b>(question: "Tests pass. Ship it to staging?")
   <span class="d" data-show="waiting">⎿  Waiting for your answer…</span><span data-show="answered" hidden>  <span class="d">⎿</span>  {"{"}"status":"answered","transcript":"Yes, ship it."{"}"}</span>
 </span><span data-step="deploy" hidden>
-<span class="g">⏺</span> <b>Bash</b>(npm run deploy:staging)
+<span class="g">●</span> <b>Bash</b>(npm run deploy:staging)
   <span class="d" data-show="deploying">⎿  Running…</span><span class="d" data-show="deployed" hidden>⎿  Deployed invoice-api@2.4.1 to staging in 41s</span>
 </span><span data-step="shipped" hidden>
-<span class="w">⏺</span> Shipped to staging. The rounding fix is in 2.4.1.
+<span class="w">●</span> Shipped to staging. The rounding fix is in 2.4.1.
 </span>
 <span class="sp" data-show="spinner">✻ Thinking… <span class="d">(esc to interrupt)</span></span>
 <span class="box">╭──────────────────────────────────────────────────────────────────╮
@@ -91,7 +91,10 @@ const bars5 = Array.from({ length: 5 });
 
       </div>
     </div>
-    <img class="sc-frame" src="/device/macbook-pro-14-space-black-1x.webp" srcset="/device/macbook-pro-14-space-black-1x.webp 1930w, /device/macbook-pro-14-space-black-2x.webp 3860w" sizes="(min-width: 1180px) 1140px, 100vw" width="3860" height="2540" alt="" />
+    <picture>
+      <source media="(max-width: 734px)" srcset="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+      <img class="sc-frame" src="/device/macbook-pro-14-space-black-1x.webp" srcset="/device/macbook-pro-14-space-black-1x.webp 1930w, /device/macbook-pro-14-space-black-2x.webp 3860w" sizes="(min-width: 1180px) 1140px, 100vw" width="3860" height="2540" alt="" />
+    </picture>
     <div class="sc-top" aria-hidden="true">
       <div class="sc-inner sc-top-inner">
         <div class="sc-island" data-mode="idle">

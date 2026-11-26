@@ -170,6 +170,7 @@ html[data-theme="dark"] {
 .ny-btn-secondary:hover { border-color: var(--tertiary); }
 .ny-count { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-variant-numeric: tabular-nums; padding-inline-start: 8px; border-inline-start: 1px solid var(--btn2-line); }
 .ny-count[hidden] { display: none; }
+.ny-btn-short { display: none; }
 .ny-count svg { inline-size: 13px; block-size: 13px; }
 .ny-btn:focus-visible, .ny-faq summary:focus-visible, .ny-copy:focus-visible, .ny-theme button:focus-visible, .ny-brand:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 .ny-actions { margin: 28px 0 0; display: flex; flex-wrap: wrap; gap: 12px; }
@@ -269,7 +270,7 @@ html[data-theme="dark"] {
 .sc-codex .sc-term { font-size: 13.5px; }
 .sc.codex-front .sc-codex { z-index: 3; }
 
-.sc-beam { position: absolute; inset: 0; inline-size: 1512px; block-size: 982px; z-index: 5; pointer-events: none; }
+.sc-beam { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; z-index: 5; pointer-events: none; }
 
 .sc-subs { position: absolute; inset: auto 0 69px; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
 .sc-subs p { margin: 0; max-inline-size: 1180px; padding: 12px 25px; border-radius: 16px; background: rgb(20 20 22 / 78%); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
@@ -436,4 +437,157 @@ html[data-theme="dark"] .ny-logo-light { display: none; }
 @keyframes ny-rise { from { opacity: 0; translate: 0 32px; } }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+}
+
+
+/* ---- Rework (HM-1427): wider privacy block, subtitle-style voice lines,
+   hairline lists instead of boxed cards, and a cropped, panning device on
+   phones so the island and the terminal stay readable. ---- */
+.ny-brand { white-space: nowrap; }
+.ny-col.ny-wide { max-inline-size: 1000px; }
+.ny-hero-icon { inline-size: 80px; block-size: 80px; margin-block-end: 24px; filter: drop-shadow(0 10px 30px rgb(127 180 255 / 18%)); }
+.ny-hero-sub { max-inline-size: 600px; margin: 20px auto 0; font-size: 21px; line-height: 1.38; letter-spacing: 0.011em; color: var(--muted); text-wrap: balance; }
+.ny-hero-meta { text-wrap: balance; }
+.ny-dot { color: var(--tertiary); }
+
+/* Privacy: four promises on a hairline grid, then what runs where. */
+.ny-promise { list-style: none; margin: 48px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); border-block: 1px solid var(--line); }
+.ny-promise li { padding: 28px 24px 30px; }
+.ny-promise li + li { border-inline-start: 1px solid var(--line); }
+.ny-promise li:first-child { padding-inline-start: 0; }
+.ny-promise li:last-child { padding-inline-end: 0; }
+.ny-promise svg { color: var(--fg); }
+.ny-promise h3 { margin-block-start: 16px; }
+.ny-promise p { margin: 8px 0 0; color: var(--muted); font-size: 15px; line-height: 1.47; letter-spacing: -0.01em; }
+.ny-promise a { text-underline-offset: 3px; }
+@media (max-width: 1000px) {
+  .ny-promise { grid-template-columns: 1fr 1fr; }
+  .ny-promise li, .ny-promise li:first-child, .ny-promise li:last-child { padding: 26px 24px; }
+  .ny-promise li:nth-child(odd) { padding-inline-start: 0; border-inline-start: 0; }
+  .ny-promise li:nth-child(even) { padding-inline-end: 0; }
+  .ny-promise li:nth-child(n + 3) { border-block-start: 1px solid var(--line); }
+}
+@media (max-width: 560px) {
+  .ny-promise { grid-template-columns: 1fr; }
+  .ny-promise li, .ny-promise li:nth-child(odd), .ny-promise li:nth-child(even) { padding: 22px 0; border-inline-start: 0; display: grid; grid-template-columns: 28px 1fr; column-gap: 16px; }
+  .ny-promise li + li { border-block-start: 1px solid var(--line); }
+  .ny-promise svg { grid-row: span 2; margin-block-start: -2px; }
+  .ny-promise h3 { margin: 0; }
+  .ny-promise p { margin-block-start: 4px; }
+}
+.ny-models { margin: 32px 0 0; padding: 0; font-size: 15px; letter-spacing: -0.01em; }
+.ny-models div { display: grid; grid-template-columns: 220px 1fr; gap: 24px; padding: 12px 0; }
+.ny-models div + div { border-block-start: 1px solid var(--line); }
+.ny-models dt { font-weight: 600; }
+.ny-models dd { margin: 0; color: var(--muted); }
+@media (max-width: 734px) { .ny-models div { grid-template-columns: 1fr; gap: 2px; } }
+.ny-reqs.ny-models { margin-block-start: 40px; border-block-start: 1px solid var(--line); }
+.ny-reqs.ny-models div { display: grid; }
+.ny-reqs.ny-models dd { text-align: start; }
+
+/* What you say, drawn like the app's subtitles: a dark pill, your words in white. */
+.ny-said { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 20px; }
+.ny-said li { display: grid; gap: 8px; justify-items: start; }
+.ny-said q { quotes: "“" "”"; display: inline-block; max-inline-size: 100%; box-sizing: border-box; padding: 9px 16px 10px; border-radius: 14px; background: rgb(28 28 30); color: #fff; font-family: var(--display); font-weight: 600; font-size: 19px; line-height: 1.3; letter-spacing: -0.01em; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%); }
+.ny-said span { color: var(--muted); font-size: 15px; padding-inline-start: 16px; }
+html[data-theme="light"] .ny-said q { background: #1d1d1f; box-shadow: 0 6px 20px rgb(0 0 0 / 10%); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .ny-said q { background: #1d1d1f; box-shadow: 0 6px 20px rgb(0 0 0 / 10%); } }
+@media (max-width: 734px) { .ny-said q { font-size: 17px; padding: 8px 14px 9px; } .ny-said span { padding-inline-start: 14px; } }
+
+.ny-code .o { color: var(--you); }
+@media (max-width: 734px) {
+  /* Wrap the example instead of scrolling it sideways. */
+  .ny-code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; padding: 14px 16px; }
+  .ny-section { padding-block-start: 80px; }
+}
+
+/* Setup: plain numbered steps. */
+.ny-steps { margin-block-start: 32px; gap: 22px; }
+
+/* FAQ without the box: hairlines only. */
+.ny-faq { border-block-start: 1px solid var(--line); border-radius: 0; }
+.ny-faq details { border-block-end: 1px solid var(--line); }
+.ny-faq details + details { border-block-start: 0; }
+.ny-faq summary { padding: 20px 0; font-size: 21px; }
+.ny-faq p { padding: 0 0 22px; max-inline-size: 640px; }
+@media (max-width: 734px) { .ny-faq summary { font-size: 18px; padding: 16px 0; min-block-size: 44px; } .ny-faq p { padding-inline: 0; } }
+
+.ny-end img { inline-size: 96px; block-size: 96px; margin: 0 auto 24px; }
+
+/* Phones */
+@media (max-width: 734px) {
+  .ny .ny-hero h1 { font-size: clamp(34px, 9.6vw, 48px); line-height: 1.08; }
+  .ny-hero-sub { font-size: 18px; line-height: 1.4; margin-block-start: 16px; }
+  .ny h2 { font-size: clamp(32px, 8.6vw, 40px); }
+  .ny-subhead { font-size: 19px; line-height: 1.3; }
+  .ny-hero-icon { inline-size: 64px; block-size: 64px; margin-block-end: 20px; }
+}
+@media (max-width: 480px) {
+  .ny-hide-xs { display: none; }
+  .ny-header-inner { padding-inline: 16px; }
+  /* Phones: no app icon (the header has it), the two buttons on one row, and
+     no brew command (nobody runs it on a phone; it's in the setup steps). */
+  .ny-hero { padding-block-start: 40px; }
+  .ny-hero-icon { display: none; }
+  .ny-hero-cta { flex-wrap: nowrap; gap: 10px; margin-block-start: 24px; }
+  .ny-hero .ny-btn { padding: 13px 18px; min-block-size: 48px; box-sizing: border-box; }
+  .ny-hero .ny-btn-secondary .ny-btn-label { display: none; }
+  .ny-hero .ny-btn-secondary .ny-btn-short { display: inline; }
+  .ny-hero-cmd { display: none; }
+  .ny-hero-meta { margin-block-start: 16px; font-size: 13px; }
+  .ny-col { padding-inline: 20px; }
+  .ny-stats { grid-template-columns: 1fr 1fr; }
+  .ny-stat b { font-size: 26px; }
+  .ny-actions { gap: 10px; }
+  .ny-end .ny-actions { flex-direction: column; align-items: stretch; max-inline-size: 340px; margin-inline: auto; }
+}
+
+/* The hero on phones: no laptop. A phone-sized Mac screen of its own
+   (480 x 640 pt, see scene.ts) with the island at the top, the Claude Code
+   window under it showing its latest lines, and the subtitles at the bottom.
+   Everything is drawn about 0.8x, so the island and the terminal stay
+   readable. Codex sits behind Claude and comes forward when "Hey Mac" types
+   into it. */
+@media (max-width: 734px) {
+  .sc { inline-size: calc(100% - 24px); max-inline-size: 440px; margin-block-start: 36px; }
+  .sc-device { aspect-ratio: 480 / 640; }
+  .sc-frame { display: none; }
+  .sc-screen, .sc-top { inset: 0; inline-size: 100%; block-size: 100%; border-radius: 22px; }
+  .sc-screen { box-shadow: 0 0 0 1px rgb(255 255 255 / 9%), 0 24px 60px rgb(0 0 0 / 35%); }
+  .sc-inner { inline-size: 480px; block-size: 640px; }
+  .sc-menubar { padding-inline: 16px; font-size: 13px; }
+  /* The wide island covers the menu bar's middle; hide its items so no stray
+     edges peek out beside it. */
+  .sc-mb-left, .sc-mb-right { display: none; }
+  .sc-claude { inset: 50px 12px auto; inline-size: auto; block-size: 430px; }
+  .sc-claude .sc-titlebar, .sc-codex .sc-titlebar { position: relative; z-index: 1; background: #1d1e21; }
+  .sc-claude .sc-term { position: absolute; inset: auto 0 0; padding: 0 16px 14px; font-size: 14.5px; line-height: 1.45; white-space: pre-wrap; }
+  .sc-claude .sc-term .box { display: none; }
+  .sc-codex { inset: 196px 12px auto 52px; inline-size: auto; block-size: 284px; }
+  .sc-codex .sc-term { position: absolute; inset: auto 0 0; padding: 0 16px 14px; font-size: 14px; white-space: pre-wrap; }
+  .sc-subs { inset: auto 16px 26px; }
+  .sc-subs p { max-inline-size: 100%; padding: 10px 18px; border-radius: 14px; font-size: 24px; line-height: 1.25; text-wrap: balance; }
+}
+@media (max-width: 734px) and (prefers-reduced-motion: no-preference) {
+  .sc-codex { transition: translate 0.5s cubic-bezier(0.23, 1, 0.32, 1); }
+  .sc.codex-front .sc-codex { translate: 0 -24px; }
+}
+@media (max-width: 734px) and (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .sc-screen { box-shadow: 0 0 0 1px rgb(0 0 0 / 8%), 0 20px 50px rgb(0 0 0 / 14%); } }
+@media (max-width: 734px) { html[data-theme="light"] .sc-screen { box-shadow: 0 0 0 1px rgb(0 0 0 / 8%), 0 20px 50px rgb(0 0 0 / 14%); } }
+
+/* The privacy promise sits on its own tile, wider than the text column. */
+.ny-tile { box-sizing: border-box; inline-size: calc(100% - 40px); max-inline-size: 1080px; margin-inline: auto; padding: clamp(40px, 6vw, 72px) clamp(24px, 5vw, 64px) clamp(32px, 5vw, 56px); border-radius: 28px; background: var(--tile); --line: color-mix(in srgb, var(--fg) 11%, var(--tile)); }
+.ny-tile > h2, .ny-tile > .ny-subhead { text-align: center; margin-inline: auto; }
+.ny-tile > .ny-subhead { max-inline-size: 760px; }
+html[data-theme="dark"] .ny-tile { background: #111113; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ny-tile { background: #111113; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%); } }
+@media (max-width: 734px) {
+  .ny-tile { inline-size: calc(100% - 24px); border-radius: 24px; padding: 36px 20px 24px; }
+  .ny-tile > h2, .ny-tile > .ny-subhead { text-align: start; }
+}
+@media (max-width: 480px) {
+  .ny-stats { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .ny-stat { padding: 14px 12px; border-radius: 14px; }
+  .ny-stat b { font-size: 22px; }
+  .ny-stat span { font-size: 12.5px; line-height: 1.3; }
 }

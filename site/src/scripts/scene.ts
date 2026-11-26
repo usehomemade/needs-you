@@ -6,9 +6,14 @@
 type Mode = "idle" | "wake" | "listening" | "thinking" | "sending" | "done" | "speaking";
 type Who = "user" | "claude";
 
-const W = 1512;
-const H = 982;
-const NOTCH_X = W / 2;
+// The desktop scene is the MacBook's 1512 x 982 pt screen. Phones get a
+// narrower screen of their own (no bezel), laid out by the CSS, so the island,
+// the terminal and the subtitles stay readable at phone size.
+const DESKTOP = [1512, 982] as const;
+const PHONE = [480, 640] as const;
+let W: number = DESKTOP[0];
+let H: number = DESKTOP[1];
+let NOTCH_X = W / 2;
 // Island.base, notch style: w, h, bottom radius. Expanded states get a 12 pt flare, others 6.
 const BASE: Record<Mode, [number, number, number]> = {
   idle: [185, 32, 10], wake: [300, 32, 12], listening: [420, 96, 26], thinking: [310, 32, 12],
@@ -99,6 +104,11 @@ class Beam {
     for (const n of ["size", "time", "level", "opacity", "scale", "c0", "c1", "c2", "c3"]) this.loc[n] = gl.getUniformLocation(prog, n);
     gl.viewport(0, 0, canvas.width, canvas.height);
   }
+  resize(width: number, height: number) {
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.gl?.viewport(0, 0, width, height);
+  }
   start(who: Who) {
     this.targetPalette = PALETTE[who];
     if (!this.running) this.palette = PALETTE[who].map((c) => [...c]);
@@ -167,14 +177,27 @@ export const startScene = (root: HTMLElement) => {
   const spinner = root.querySelector<HTMLElement>('[data-show="spinner"]')!;
   const beam = new Beam(root.querySelector<HTMLCanvasElement>(".sc-beam")!);
 
-  // Fit the 1512 pt screen to the page. Narrow pages show the part around the
-  // notch and the Claude Code window, at a readable size.
+  // Pick the screen (MacBook or phone) and fit it to the page.
+  const phone = window.matchMedia("(max-width: 734px)");
   const fit = () => {
     const s = screen.clientWidth / W;
     for (const el of root.querySelectorAll<HTMLElement>(".sc-inner")) el.style.transform = "scale(" + s + ")";
   };
+  const layout = () => {
+    [W, H] = phone.matches ? PHONE : DESKTOP;
+    NOTCH_X = W / 2;
+    for (const el of root.querySelectorAll<HTMLElement>(".sc-inner")) {
+      el.style.width = W + "px";
+      el.style.height = H + "px";
+    }
+    // Half resolution on the big screen is enough for a soft glow; the phone
+    // screen is small, so it gets full resolution.
+    const k = phone.matches ? 1 : 0.5;
+    beam.resize(Math.round(W * k), Math.round(H * k));
+    fit();
+  };
   new ResizeObserver(fit).observe(screen);
-  fit();
+  layout();
 
   // Island state
   let mode: Mode = "idle";
@@ -418,6 +441,12 @@ export const startScene = (root: HTMLElement) => {
   const resume = () => {
     if (!frame && visible && !document.hidden) { last = 0; frame = requestAnimationFrame(loop); }
   };
+
+  phone.addEventListener("change", () => {
+    layout();
+    drawIsland();
+    beam.draw();
+  });
 
   if (reduce) {
     // One still frame: Claude has asked, the question is on screen, the beam is lit.
