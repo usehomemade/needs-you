@@ -4,7 +4,8 @@ import Foundation
 /// The on-device model decides which one he meant (HM-1399).
 public enum PresenceCommand: Equatable, Sendable {
     /// "Good night" (goodNight) or "I'm going to take a shower": do not disturb on.
-    case away(goodNight: Bool)
+    /// `time`: how long, or until when (HM-1433); empty when he said none.
+    case away(goodNight: Bool, time: AwayTime = AwayTime())
     /// "I'm back", "Good morning": do not disturb off, then the voicemails one by one.
     /// `summary`: he also asked what was done ("Good morning, what did you work on last night?").
     case back(summary: Bool)

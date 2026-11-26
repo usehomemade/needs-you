@@ -481,6 +481,8 @@ final class Conductor: ObservableObject {
             return await Self.ttsTest(req)
         case .clarify:
             return await VoiceCommands.shared.clarifyTest(req)
+        case .intentEval:
+            return await ModelRouter.shared.eval(req.context ?? "intent")
         case .sounds:
             for cue in Cue.allCases { await Sounds.shared.playAndWait(cue); try? await Task.sleep(nanoseconds: 450_000_000) }
             return Response(status: "done")

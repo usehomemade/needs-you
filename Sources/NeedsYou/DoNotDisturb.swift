@@ -27,13 +27,16 @@ struct Voicemail: Codable, Identifiable, Hashable {
 
 /// Do not disturb (HM-1352): while it is on, no agent speaks, plays a sound or
 /// opens the mic. `ask`/`say` return at once with status "voicemail" and the text
-/// is kept here. No timer: it stays on until he says "I'm back" / "Good morning"
-/// or turns it off in the menu or Settings. Kept on disk, so a restart keeps it on.
+/// is kept here. It stays on until he says "I'm back" / "Good morning", turns it off in the
+/// menu or Settings, or the end he set ("for three hours", "until 8", HM-1433) comes.
+/// Kept on disk, so a restart keeps it on.
 @MainActor
 final class DoNotDisturb: ObservableObject {
     static let shared = DoNotDisturb()
 
-    struct State: Codable { var on = false; var goodNight = false; var since: Date? }
+    struct State: Codable { var on = false; var goodNight = false; var since: Date?
+        /// It turns itself off then (nil: until he is back).
+        var until: Date? }
 
     @Published private(set) var state = State()
     @Published private(set) var voicemails: [Voicemail] = []
@@ -47,14 +50,30 @@ final class DoNotDisturb: ObservableObject {
     init() {
         if let d = try? Data(contentsOf: stateURL), let s = try? LineIO.decoder.decode(State.self, from: d) { state = s }
         if let d = try? Data(contentsOf: mailURL), let v = try? LineIO.decoder.decode([Voicemail].self, from: d) { voicemails = v }
+        // The end he set: checked every 15 s, so sleep and restarts cannot skip it.
+        expiry = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in
+            Task { @MainActor in DoNotDisturb.shared.checkEnd() }
+        }
+        DispatchQueue.main.async { self.checkEnd() }
+    }
+
+    private var expiry: Timer?
+
+    /// The end he set has come: off, with the cue.
+    func checkEnd(now: Date = Date()) {
+        guard state.on, let end = state.until, end <= now else { return }
+        Isolation.note("dnd: the end he set came")
+        turnOff(chime: true)
     }
 
     /// `chime`: play the DND cue (menu, Settings, voice). Test hooks stay silent.
-    func turnOn(goodNight: Bool, chime: Bool = false) {
+    /// `until`: when it ends by itself (nil: until he is back). Turning it on again sets a new end.
+    func turnOn(goodNight: Bool, until: Date? = nil, chime: Bool = false) {
         if chime && !state.on { Sounds.shared.play(.dndOn) }
-        state = State(on: true, goodNight: goodNight || (state.on && state.goodNight), since: state.on ? state.since : Date())
+        state = State(on: true, goodNight: goodNight || (state.on && state.goodNight), since: state.on ? state.since : Date(),
+                      until: until.flatMap { $0 > Date() ? $0 : nil })
         saveState()
-        Isolation.note("dnd: on (\(goodNight ? "good night" : "away"))")
+        Isolation.note("dnd: on (\(goodNight ? "good night" : "away"))" + (state.until.map { " until \($0)" } ?? ""))
     }
 
     func turnOff(chime: Bool = false) {
@@ -62,12 +81,37 @@ final class DoNotDisturb: ObservableObject {
         if chime { Sounds.shared.play(.dndOff) }
         state.on = false
         state.goodNight = false
+        state.until = nil
         saveState()
         Isolation.note("dnd: off")
     }
 
     /// Menu and Settings switch.
     func set(_ on: Bool) { on ? turnOn(goodNight: false, chime: true) : turnOff(chime: true) }
+
+    /// Menu and Settings: on until `end` (nil: until he turns it off).
+    func turnOn(until end: Date?) { turnOn(goodNight: false, until: end, chime: true) }
+
+    /// "until 3:30 PM" while it has an end.
+    var untilText: String? {
+        guard state.on, let u = state.until else { return nil }
+        let cal = Calendar.current
+        let time = u.formatted(date: .omitted, time: .shortened)
+        if cal.isDateInToday(u) { return "until \(time)" }
+        if cal.isDateInTomorrow(u) { return "until tomorrow \(time)" }
+        return "until \(u.formatted(.dateTime.weekday(.wide))) \(time)"
+    }
+
+    /// The menu's quick ends: in an hour, this evening (18:00, when that is still ahead), tomorrow morning (08:00).
+    static func presets(now: Date = Date(), calendar: Calendar = .current) -> [(String, Date)] {
+        var out: [(String, Date)] = [("For 1 Hour", now.addingTimeInterval(3600))]
+        if let evening = AwayTime(part: .evening).end(now: now, calendar: calendar), calendar.isDate(evening, inSameDayAs: now),
+           evening.timeIntervalSince(now) > 3600 {
+            out.append(("Until This Evening", evening))
+        }
+        if let morning = AwayTime(day: .tomorrow, part: .morning).end(now: now, calendar: calendar) { out.append(("Until Tomorrow Morning", morning)) }
+        return out
+    }
 
     @discardableResult
     func store(_ req: Request, kind: Voicemail.Kind, conversationID: String? = nil) -> Voicemail {

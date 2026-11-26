@@ -86,7 +86,7 @@ final class IntentJudgeTests: XCTestCase {
         XCTAssertEqual(decide(nil), .ask([1, 0, 2], heard: ""))
     }
     func testOtherActions() {
-        XCTAssertEqual(decide(VoiceIntent(action: .back, summary: true)), .presence(.back, summary: true))
+        XCTAssertEqual(decide(VoiceIntent(action: .back, summary: true)), .presence(.back, summary: true, time: AwayTime()))
         XCTAssertEqual(decide(VoiceIntent(action: .newChat, named: "ChatGPT", message: "weather")), .newChat(named: "ChatGPT"))
         XCTAssertEqual(decide(VoiceIntent(action: .nothing)), .nothing)
     }

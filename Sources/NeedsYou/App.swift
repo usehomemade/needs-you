@@ -192,6 +192,31 @@ extension Conductor {
 }
 
 /// The menu bar menu (HM-1356): what is going on, then the switches he uses most.
+/// Do Not Disturb in the menu bar menu (HM-1433): on for a while, until a time, or until he
+/// turns it off; while it is on, when it ends and Turn Off.
+struct DoNotDisturbMenu: View {
+    @ObservedObject private var dnd = DoNotDisturb.shared
+
+    var body: some View {
+        Menu(dnd.on ? (dnd.state.goodNight ? "Good Night" : "Do Not Disturb") + (dnd.untilText.map { " \($0)" } ?? " On") : "Do Not Disturb") {
+            if dnd.on {
+                Button("Turn Off") { dnd.set(false) }
+                Divider()
+                Text("Change the End")
+            }
+            ForEach(DoNotDisturb.presets(), id: \.0) { label, end in
+                Button(label) { dnd.turnOn(until: end) }
+            }
+            Button("Until I Turn It Off") { dnd.turnOn(until: nil) }
+            Divider()
+            Button("Custom\u{2026}") {
+                UserDefaults.standard.set(SettingsView.Pane.doNotDisturb.rawValue, forKey: "settingsPane")
+                Nav.openSettings()
+            }
+        }
+    }
+}
+
 struct MenuContent: View {
     @EnvironmentObject var conductor: Conductor
     @ObservedObject private var voice = VoiceCommands.shared
@@ -209,8 +234,7 @@ struct MenuContent: View {
             Button("Stop Listening") { conductor.stop() }
         }
         Divider()
-        Toggle(dnd.state.goodNight && dnd.on ? "Do Not Disturb (Good Night)" : "Do Not Disturb",
-               isOn: Binding(get: { dnd.on }, set: { dnd.set($0) }))
+        DoNotDisturbMenu()
         voicemails
         recent
         Divider()

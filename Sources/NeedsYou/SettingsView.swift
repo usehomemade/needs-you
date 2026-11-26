@@ -522,17 +522,35 @@ struct ModelsPane: View {
 struct DoNotDisturbPane: View {
     @ObservedObject private var conductor = Conductor.shared
     @ObservedObject private var dnd = DoNotDisturb.shared
+    @State private var customEnd = Date().addingTimeInterval(2 * 3600)
     private var phrase: String { Wake.phrase }
 
     var body: some View {
-        Pane(height: 370) {
+        Pane(height: 450) {
             Section {
                 Toggle("Do Not Disturb", isOn: Binding(get: { dnd.on }, set: { dnd.set($0) }))
                 if dnd.on, let since = dnd.state.since {
                     LabeledContent(dnd.state.goodNight ? "Good Night Since" : "On Since", value: since.formatted(date: .omitted, time: .shortened))
+                    LabeledContent("Ends", value: dnd.untilText.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? "When you turn it off or say you\u{2019}re back")
+                }
+                // HM-1433: on for a while, or until a time; it turns itself off then.
+                HStack {
+                    Menu(dnd.on ? "Change the End" : "Turn On For\u{2026}") {
+                        ForEach(DoNotDisturb.presets(), id: \.0) { label, end in
+                            Button(label) { dnd.turnOn(until: end) }
+                        }
+                        Button("Until I Turn It Off") { dnd.turnOn(until: nil) }
+                    }
+                    .fixedSize()
+                    Spacer()
+                }
+                HStack {
+                    DatePicker("Until", selection: $customEnd, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                    Button(dnd.on ? "Set End" : "Turn On") { dnd.turnOn(until: customEnd) }
+                        .disabled(customEnd <= Date())
                 }
             } footer: {
-                Text("While it is on, agents cannot speak, play sounds or open the mic: what they wanted to say is kept as a voicemail. No timer. Say \u{201C}\(phrase), good night\u{201D} or \u{201C}\(phrase), I\u{2019}m going to take a shower\u{201D} to turn it on, and \u{201C}\(phrase), I\u{2019}m back\u{201D} or \u{201C}good morning\u{201D} to turn it off and hear the voicemails one by one. \u{201C}What did you work on last night?\u{201D} gives a summary.")
+                Text("While it is on, agents cannot speak, play sounds or open the mic: what they wanted to say is kept as a voicemail. With an end it turns itself off then. Say \u{201C}\(phrase), I\u{2019}m out for two hours\u{201D}, \u{201C}\(phrase), do not disturb until 3 p.m.\u{201D} or \u{201C}\(phrase), good night\u{201D} to turn it on, and \u{201C}\(phrase), I\u{2019}m back\u{201D} or \u{201C}good morning\u{201D} to turn it off and hear the voicemails one by one. \u{201C}What did you work on last night?\u{201D} gives a summary.")
                     .foregroundStyle(.secondary)
             }
             Section {

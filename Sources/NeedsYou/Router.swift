@@ -342,6 +342,8 @@ enum Router {
         let rawNamed = intent?.named ?? ""
         // A name counts only when he said it, word for word (HM-1408).
         if let i = intent { intent?.named = VoiceIntent.spokenName(i.named, in: rest) }
+        // A command that names one chat is a message for it (HM-1433).
+        intent = intent?.forNamedChat(candidates, rest: rest)
         let meaning = MeaningIndex.shared.rank(rest, targets)
         let votes = RouteLearningStore.shared.votes(meaning.vector, lang: meaning.lang, targets: targets)
         let recent = Array(targets.indices.filter { targets[$0].kind != .desktop }.prefix(3))
@@ -360,10 +362,10 @@ enum Router {
         switch outcome {
         case .nothing:
             return (.nothing("I didn't catch what to do."), log)
-        case .presence(let a, let summary):
+        case .presence(let a, let summary, let time):
             switch a {
-            case .away: return (.presence(.away(goodNight: false)), log)
-            case .goodNight: return (.presence(.away(goodNight: true)), log)
+            case .away: return (.presence(.away(goodNight: false, time: time)), log)
+            case .goodNight: return (.presence(.away(goodNight: true, time: time)), log)
             case .back: return (.presence(.back(summary: summary)), log)
             case .voicemails: return (.presence(.playVoicemails), log)
             case .summary: return (.presence(.summary), log)

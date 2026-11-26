@@ -171,8 +171,8 @@ enum MenuStatus {
             }
         }
         if dnd.on {
-            let since = dnd.state.since.map { " since \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
-            return (dnd.state.goodNight ? "Good Night" : "Do Not Disturb") + since
+            let when = dnd.untilText.map { " " + $0 } ?? dnd.state.since.map { " since \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
+            return (dnd.state.goodNight ? "Good Night" : "Do Not Disturb") + when
         }
         if voice.capturing { return "Listening to you" }
         if voice.enabled { return voice.armed ? "Listening for \u{201C}\(Wake.phrase)\u{201D}" : "Hey Mac: \(voice.status)" }

@@ -136,28 +136,8 @@ final class VoiceCommands: ObservableObject {
             let number = Int(answer.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { convo.offered.indices.contains($0 - 1) ? $0 : nil }
             turns.append(Turn(role: .user, text: number.map { "Pressed \($0)" } ?? answer))
             let wasConfirming = convo.confirming != nil
-            var reading = ClarifyConversation.Reading()
-            var byName: Int?
-            var missing: String?
-            if number == nil {
-                convo.answered(answer)
-                let clean = ChoicePick.stripEcho(answer, question: question, names: offeredNames)
-                byName = ChoicePick.name(clean, names: allNames)
-                // The on-device model reads it with the whole conversation; without one, the names do.
-                reading = await ModelRouter.shared.converse(convo, chats: everyone) ?? ClarifyConversation.Reading(chat: byName)
-                // A name he said (HM-1425): matched against every chat's tab, workspace, folder and title.
-                let named = ClarifyConversation.spokenName(reading.named, in: clean)
-                if !named.isEmpty {
-                    switch ClarifyConversation.nameMatch(named, everyone.map(\.candidate)) {
-                    case .chat(let i): byName = i
-                    case .missing: missing = named
-                    case .unclear: break
-                    }
-                }
-            }
-            let meaning = MeaningIndex.shared.rank(convo.searchText(about: reading.about), everyone)
-            let step = convo.next(reading, pressed: number, meaning: meaning.scores, byName: byName, missingName: missing)
-            Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(step); meaning \(Meaning.describe(meaning.scores)); name \(byName.map { String($0 + 1) } ?? "-")\(missing.map { "; no chat called \u{201C}\($0)\u{201D}" } ?? "")")
+            let (step, missing) = await Self.readAnswer(answer, pressed: number, convo: &convo, question: question,
+                                                        offeredNames: offeredNames, allNames: allNames, everyone: everyone)
             switch step {
             case .send(let i): return (.picked(everyone[i], how: wasConfirming ? "confirmed" : "picked"), turns)
             case .cancel: return (.cancelled("He said not to send it"), turns)
@@ -167,6 +147,36 @@ final class VoiceCommands: ObservableObject {
             case .notFound(let name): question = "I can't find a chat called \(name). Which one? Tell me what it's about."
             }
         }
+    }
+
+    /// One answer to "which chat?", read the way the conversation reads it (HM-1433: the intent
+    /// eval runs the same path): the model with the whole conversation, the names he said, and
+    /// meaning. Returns the next step and a name he said that no chat has.
+    static func readAnswer(_ answer: String, pressed number: Int?, convo: inout ClarifyConversation, question: String,
+                           offeredNames: [String], allNames: [String], everyone: [ChatTarget]) async -> (ClarifyConversation.Step, String?) {
+        var reading = ClarifyConversation.Reading()
+        var byName: Int?
+        var missing: String?
+        if number == nil {
+            convo.answered(answer)
+            let clean = ChoicePick.stripEcho(answer, question: question, names: offeredNames)
+            byName = ChoicePick.name(clean, names: allNames)
+            // The on-device model reads it with the whole conversation; without one, the names do.
+            reading = await ModelRouter.shared.converse(convo, chats: everyone) ?? ClarifyConversation.Reading(chat: byName)
+            // A name he said (HM-1425): matched against every chat's tab, workspace, folder and title.
+            let named = ClarifyConversation.spokenName(reading.named, in: clean)
+            if !named.isEmpty {
+                switch ClarifyConversation.nameMatch(named, everyone.map(\.candidate)) {
+                case .chat(let i): byName = i
+                case .missing: missing = named
+                case .unclear: break
+                }
+            }
+        }
+        let meaning = MeaningIndex.shared.rank(convo.searchText(about: reading.about), everyone)
+        let step = convo.next(reading, pressed: number, meaning: meaning.scores, byName: byName, missingName: missing)
+        Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(step); meaning \(Meaning.describe(meaning.scores)); name \(byName.map { String($0 + 1) } ?? "-")\(missing.map { "; no chat called \u{201C}\($0)\u{201D}" } ?? "")")
+        return (step, missing)
     }
 
     /// Test hook: needs-you clarify-test --title "recipebox|orchard" --vad-file <wav> [--mute].
@@ -678,14 +688,15 @@ final class VoiceCommands: ObservableObject {
         c.outcome = .done
         c.endedAt = Date()
         switch p {
-        case .away(let night):
+        case .away(let night, let time):
             // On first, so an agent asking right now already gets a voicemail.
             await Sounds.shared.playAndWait(.dndOn)
-            dnd.turnOn(goodNight: night)
-            c.title = night ? "Good night: do not disturb" : "Do not disturb"
+            let end = time.end()
+            dnd.turnOn(goodNight: night, until: end)
+            let untilText = end.map { " until " + AwayTime.spokenEnd($0) } ?? ""
+            c.title = (night ? "Good night: do not disturb" : "Do not disturb") + untilText
             Conductor.shared.record(c)
-            await Conductor.shared.speakOnly(night ? "Good night\(UserName.commaName). I'll keep the messages for the morning."
-                                                   : "Okay. I'll keep the messages until you're back.")
+            await Conductor.shared.speakOnly(AwayTime.confirmation(goodNight: night, minutes: end == nil ? nil : time.minutes, end: end, name: UserName.commaName))
         case .back(let summary):
             let night = dnd.state.goodNight
             if dnd.on { await Sounds.shared.playAndWait(.dndOff) }

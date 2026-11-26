@@ -19,10 +19,13 @@ public struct VoiceIntent: Equatable, Sendable {
     public var summary: Bool
     /// The message for the chat, in his words.
     public var message: String
+    /// With away or good night: how long, or until when (HM-1433).
+    public var time: AwayTime
 
-    public init(action: Action, chat: Int? = nil, named: String = "", meansFront: Bool = false, summary: Bool = false, message: String = "") {
+    public init(action: Action, chat: Int? = nil, named: String = "", meansFront: Bool = false, summary: Bool = false, message: String = "",
+                time: AwayTime = AwayTime()) {
         self.action = action; self.chat = chat; self.named = named
-        self.meansFront = meansFront; self.summary = summary; self.message = message
+        self.meansFront = meansFront; self.summary = summary; self.message = message; self.time = time
     }
 }
 
@@ -38,6 +41,34 @@ extension VoiceIntent {
             return n.joined(separator: " ")
         }
         return ""
+    }
+}
+
+extension VoiceIntent {
+    /// The model read a command (away, voicemails, summary, ...) but he called one chat by its
+    /// name (HM-1433: "orchard, I'm going away for a while so finish it on your own"): words that
+    /// start by naming a chat are for that chat. Checked against the chat names (data), never
+    /// against phrases. `named` must already be a phrase he said (`spokenName`).
+    public func forNamedChat(_ chats: [ChatCandidate], rest: String) -> VoiceIntent {
+        guard action != .send, action != .newChat else { return self }
+        let n = named.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty else { return self }
+        let ranked = ChatMatcher.rank(n, chats)
+        guard let best = ranked.first, best.score >= 0.5, (ranked.dropFirst().first?.score ?? 0) <= best.score - 0.2 else { return self }
+        var out = self
+        out.action = .send
+        out.chat = best.index
+        out.time = AwayTime()
+        out.summary = false
+        if ChatMatcher.words(message).count < 2 { out.message = Self.without(n, in: rest) }
+        return out
+    }
+
+    /// `rest` without the words of `name` (its first appearance), for the message.
+    static func without(_ name: String, in rest: String) -> String {
+        guard let r = rest.range(of: name, options: [.caseInsensitive, .diacriticInsensitive]) else { return rest }
+        var s = rest; s.removeSubrange(r)
+        return s.trimmingCharacters(in: CharacterSet.whitespaces.union(.punctuationCharacters))
     }
 }
 
@@ -104,7 +135,7 @@ public enum IntentJudge {
         case notFound(String)
         /// A new chat: `named` is the app or project he said ("" = none).
         case newChat(named: String)
-        case presence(VoiceIntent.Action, summary: Bool)
+        case presence(VoiceIntent.Action, summary: Bool, time: AwayTime)
         case nothing
     }
 
@@ -128,7 +159,7 @@ public enum IntentJudge {
         case .nothing: return (.nothing, "model: nothing to do")
         case .newChat: return (.newChat(named: i.named.trimmingCharacters(in: .whitespacesAndNewlines)), "model: new chat")
         case .send: break
-        default: return (.presence(i.action, summary: i.summary), "model: \(i.action.rawValue)")
+        default: return (.presence(i.action, summary: i.summary, time: i.time), "model: \(i.action.rawValue)")
         }
         let named = i.named.trimmingCharacters(in: .whitespacesAndNewlines)
         if !named.isEmpty {

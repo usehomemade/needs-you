@@ -18,6 +18,8 @@ public enum Wire {
 
 public struct Request: Codable {
     public enum Command: String, Codable { case ask, say, done, status, wake = "wake-test", clean = "clean-test", sounds = "play-sounds", stt = "stt-test", tts = "tts-test", stop = "stop-test", turn = "turn-test", voice = "voice-test", register, inbox, chats, clarify = "clarify-test"
+        /// Test hook (HM-1433): the intent evaluation set through the real on-device model.
+        case intentEval = "intent-eval"
         /// From `needs-you permission-hook` (HM-1369): ask out loud whether to allow a tool call.
         case permission = "permission-ask" }
 
