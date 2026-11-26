@@ -35,3 +35,7 @@ needs-you ask "Shall I deploy?" --title "Deploy?"
 - [Building](docs/building.md): build from source and the release pipeline.
 
 Third-party credits are in [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
+
+## License
+
+Needs You is free software under the [GNU General Public License v3.0](LICENSE). You can use, study, change and share it. If you share a changed version, it must stay open source under the same license.
