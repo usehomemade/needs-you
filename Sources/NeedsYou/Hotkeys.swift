@@ -26,7 +26,8 @@ final class Hotkeys: ObservableObject {
     @Published private(set) var turn: KeyCombo? = Hotkeys.storedTurn
     /// True while Escape is registered (test hook and logs).
     private(set) var escapeOn = false
-    private var escapeSpeaking = false, escapeSending = false, escapeCapturing = false, escapeListening = false
+    private var escapeSpeaking = false, escapeSending = false, escapeCapturing = false, escapeListening = false, escapeAfterPress = false
+    private var graceTask: Task<Void, Never>?
 
     static let defaultsKey = "turnShortcut"
 
@@ -79,8 +80,22 @@ final class Hotkeys: ObservableObject {
     /// Escape while he answers a question: start over / voicemail (HM-1396).
     func escapeWhileListening(_ on: Bool) { escapeListening = on; applyEscape() }
 
+    /// Right after an Escape press, Escape stays registered for the double-press window,
+    /// so a second press (reset, HM-1429) reaches Needs You after the first closed things.
+    func escapeGrace() {
+        escapeAfterPress = true
+        applyEscape()
+        graceTask?.cancel()
+        graceTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64((EscapeKeys.window + 0.1) * 1e9))
+            guard let self, !Task.isCancelled else { return }
+            self.escapeAfterPress = false
+            self.applyEscape()
+        }
+    }
+
     private func applyEscape() {
-        let on = escapeSpeaking || escapeSending || escapeCapturing || escapeListening
+        let on = escapeSpeaking || escapeSending || escapeCapturing || escapeListening || escapeAfterPress
         guard on != escapeOn else { return }
         if on {
             if let err = register(.escape, .escape) { Isolation.note("keys: Escape not registered (\(err))"); return }
@@ -131,11 +146,7 @@ final class Hotkeys: ObservableObject {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     switch ID(rawValue: id) {
-                    case .escape:
-                        if VoiceCommands.shared.cancelPendingSend() { break }
-                        if Conductor.shared.voicePlaying { Conductor.shared.escapePressed() }
-                        else if VoiceCommands.shared.capturing { VoiceCommands.shared.escapeWhileCapturing() }
-                        else if Conductor.shared.answering { Conductor.shared.escapeWhileAnswering() }
+                    case .escape: Escape.pressed()
                     case .turn: TurnShortcut.pressed()
                     case .n1, .n2, .n3, .n4: Conductor.shared.numberPressed(Int(id) - 10)
                     case nil: break

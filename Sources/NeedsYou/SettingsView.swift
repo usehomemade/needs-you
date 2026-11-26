@@ -179,7 +179,7 @@ struct WakePane: View {
             Section {
                 LabeledContent("Your Turn Shortcut") { ShortcutRecorder() }
             } footer: {
-                Text("Same as saying \u{201C}\(phrase)\u{201D}: opens your turn at once. Press it again to finish, or while Claude talks to cut it off and speak. Does nothing during Do Not Disturb. Esc stops Claude talking. While you talk, Esc starts you over; Esc twice cancels your command, or keeps Claude\u{2019}s question as a voicemail.")
+                Text("Same as saying \u{201C}\(phrase)\u{201D}: opens your turn at once. Press it again to finish, or while Claude talks to cut it off and speak. Does nothing during Do Not Disturb. Esc closes: Claude stops talking, or listening stops and what you said is kept, not sent (Claude\u{2019}s question waits as a voicemail). Esc twice resets: nothing is kept.")
                     .foregroundStyle(.secondary)
             }
             Section {

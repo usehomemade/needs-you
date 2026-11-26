@@ -598,6 +598,7 @@ final class Conductor: ObservableObject {
                 return r
             }
             guard clientAlive() else { return finish(convo, status: "error") }
+            if escapeReset { return closedByReset(&convo, req) }
             if escapedTwice { return toVoicemail(&convo, req) }
             if req.mute != true { Sounds.shared.play(.noAnswer) }
             convo.outcome = .noAnswer
@@ -658,6 +659,7 @@ final class Conductor: ObservableObject {
                 if heard != text { r.transcriptVerbatim = heard }
                 return r
             }
+            if escapeReset { return closedByReset(&convo, req) }
             if escapedTwice { return toVoicemail(&convo, req) }
             if req.mute != true { Sounds.shared.play(.noAnswer) }
             convo.outcome = .done
@@ -744,21 +746,29 @@ final class Conductor: ObservableObject {
     /// The turn shortcut while he answers an ask: ends his answer like "done".
     func endAnswer() { recorder?.stop() }
 
-    /// Escape while he answers (HM-1396): once = what he said is dropped and listening
-    /// starts over; twice (within half a second) = the question goes to voicemail
-    /// (a "which chat?" he started is cancelled instead).
-    enum AnswerEscape { case restart, voicemail }
+    /// Escape while he answers (HM-1429): once = close, listening stops and the question
+    /// waits as a voicemail (a "which chat?" he started keeps his message unsent);
+    /// twice = reset, the conversation is closed and nothing is kept.
     private(set) var answering = false
-    private var answerEscape: AnswerEscape?
-    private var lastAnswerEscape = Date.distantPast
-    /// The last answer ended with Escape twice.
-    private var escapedTwice: Bool { answerEscape == .voicemail }
+    private var answerEscape: EscapeKeys.Press?
+    private var answerClosedAt: Date?
+    /// The last answer ended with Escape (close: kept as a voicemail).
+    private var escapedTwice: Bool { answerEscape == .close }
+    /// The last answer or voice ended with Escape twice: closed, nothing kept.
+    private var escapeReset: Bool { answerEscape == .reset }
 
-    func escapeWhileAnswering() {
-        let twice = Date().timeIntervalSince(lastAnswerEscape) < 0.5
-        lastAnswerEscape = twice ? .distantPast : Date()
-        answerEscape = twice ? .voicemail : .restart
-        Isolation.note(twice ? "keys: Escape twice while he answers" : "keys: Escape, answer started over")
+    func closeAnswer() {
+        answerEscape = .close
+        answerClosedAt = Escape.lastClose ?? Date()
+        Isolation.note("keys: Escape while he answers: closed")
+        Island.shared.idle()
+        recorder?.stop()
+    }
+
+    /// Escape twice (HM-1429): the voice stops, an answer being recorded is dropped.
+    func resetAll() {
+        if voicePlaying { stopSpeaking(.escape) }
+        if answering || answerEscape != nil { answerEscape = .reset }
         recorder?.stop()
     }
 
@@ -832,7 +842,8 @@ final class Conductor: ObservableObject {
             return r
         }
         let heard = try await listen(wait: req.waitSeconds ?? Prefs.waitSeconds, req) ?? ""
-        if escapedTwice { return toVoicemail(&convo, req) }
+        if escapeReset { return closedByReset(&convo, req) }
+            if escapedTwice { return toVoicemail(&convo, req) }
         let text = heard.isEmpty ? "" : await TranscriptCleaner.clean(heard)
         if !heard.isEmpty { convo.turns.append(Turn(role: .user, text: text, original: heard)) }
         convo.outcome = .answered
@@ -886,7 +897,7 @@ final class Conductor: ObservableObject {
         // does not count: keep listening, with the wait starting over.
         var deadline = Date().addingTimeInterval(wait)
         while true {
-            if escapedTwice { return nil }
+            if answerEscape != nil { return nil }
             let remaining = deadline.timeIntervalSinceNow
             if remaining <= 0.3 { return nil }
             phase = .listening
@@ -970,14 +981,11 @@ final class Conductor: ObservableObject {
             recorder = nil
             partials?.cancel()
             if live { Subtitles.shared.userStopped() }
-            if let e = answerEscape {
+            if answerEscape != nil {
                 if let result { try? FileManager.default.removeItem(at: result.file.deletingLastPathComponent()) }
-                if e == .voicemail { return nil }
-                // Escape once: throw away what he said, listen again from the start.
-                answerEscape = nil
-                deadline = Date().addingTimeInterval(wait)
-                if cues { await Sounds.shared.playAndWait(.listening) }
-                continue
+                // Escape: closed. A second press within the window turns it into a reset.
+                if answerEscape == .close, await Escape.settle(answerClosedAt) == .reset { answerEscape = .reset }
+                return nil
             }
             guard let result else { return nil }
             defer { try? FileManager.default.removeItem(at: result.file.deletingLastPathComponent()) }
@@ -1020,13 +1028,22 @@ final class Conductor: ObservableObject {
         }
     }
 
-    /// Escape twice while he answers: the question waits as a voicemail (HM-1396).
+    /// Escape twice (reset, HM-1429): the conversation is closed, nothing is kept.
+    private func closedByReset(_ convo: inout Conversation, _ req: Request) -> Response {
+        convo.outcome = .cancelled
+        var r = finish(convo, status: "interrupted")
+        r.transcript = ""
+        r.state = "\(UserName.ForAgents) pressed Escape twice to dismiss this. The conversation is closed; do not repeat it. Ask again later only if it still matters."
+        return r
+    }
+
+    /// Escape while he answers (close, HM-1429): the question waits as a voicemail.
     private func toVoicemail(_ convo: inout Conversation, _ req: Request) -> Response {
         if req.mute != true { Sounds.shared.play(.cancelled) }
         convo.outcome = .noAnswer
         DoNotDisturb.shared.store(req, kind: .noAnswer, conversationID: convo.id)
         var r = finish(convo, status: "voicemail")
-        r.state = "\(UserName.ForAgents) pressed Escape twice: your question is kept as a voicemail. They hear it later: go on with other work and do not ask again."
+        r.state = "\(UserName.ForAgents) pressed Escape: your question is kept as a voicemail. They hear it later: go on with other work and do not ask again."
         return r
     }
 
@@ -1077,12 +1094,13 @@ final class Conductor: ObservableObject {
 
     /// Asks "which chat?" out loud; he answers by voice or presses 1 to `choices`.
     /// Returns the spoken answer, or the number pressed ("2").
-    /// The last "which chat?" ended with Escape: he does not want to pick one.
-    private(set) var clarifyEscaped = false
+    /// How the last "which chat?" ended with Escape (HM-1429): close keeps his message
+    /// unsent, reset drops it. nil: no Escape.
+    private(set) var clarifyEscape: EscapeKeys.Press?
 
     func voiceClarify(_ question: String, choices: Int = 0, test: Request? = nil) async -> String? {
         numberPick = nil
-        clarifyEscaped = false
+        clarifyEscape = nil
         numberChoices = min(choices, 4)
         if test == nil { Hotkeys.shared.numberKeys(numberChoices) }
         defer { numberChoices = 0; if test == nil { Hotkeys.shared.numberKeys(0) } }
@@ -1106,12 +1124,16 @@ final class Conductor: ObservableObject {
         do {
             try await speak(question, req, usersTurn: true)
             if numberPick != nil { return nil }
-            // Escape while it speaks only stops the voice (HM-1408): he answers now. Escape twice cancels.
+            // Escape while it speaks closes it (HM-1429): his message is kept unsent; twice drops it.
+            if escaped {
+                clarifyEscape = await Escape.settle(Escape.lastClose ?? Date()) == .reset || escapeReset ? .reset : .close
+                return nil
+            }
             // Let the room go quiet first, so the mic does not take the end of our
             // own question for his answer.
             if req.mute != true { try? await Task.sleep(nanoseconds: 350_000_000) }
             let heard = try await listen(wait: Prefs.waitSeconds, req)
-            if escapedTwice { clarifyEscaped = true; return nil } // his own command: Escape twice cancels it
+            if answerEscape != nil { clarifyEscape = escapeReset ? .reset : .close; return nil } // his own command: kept or dropped
             Isolation.note("clarify: heard \u{201C}\(heard ?? "")\u{201D}")
             return numberPick == nil ? heard : nil
         } catch {

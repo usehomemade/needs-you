@@ -10,7 +10,7 @@ Turn on "Listen for Hey Mac" in the menu bar or in Settings. Then say:
 - "Hey Mac, new chat on Claude desktop, ask what the weather is like" or "Hey Mac, use ChatGPT to ask how my business is doing" opens the app (if needed), starts a new chat there with its New Chat menu item and types the question. An app without the Needs You MCP server can't answer out loud, so the voice line is left off and the app stays in front.
 - "Hey Mac, how is the orchard linter going" names no chat: the on-device model picks one by topic. It sends without asking when the model's pick shares the most words with the message (folder, tab, title, what the chat works on); otherwise it asks which chat.
 
-If the chat is idle (its turn has ended), the message is typed into it, in whatever app shows it (see below). If it is busy, or a check fails, the message waits in that chat's inbox and arrives on its next tool call, turn end or prompt. For 2 seconds before it is sent, the island shows the chat it goes to. Esc or saying "cancel" stops it. Every message ends with a line telling the agent it came by voice, so it answers out loud.
+If the chat is idle (its turn has ended), the message is typed into it, in whatever app shows it (see below). If it is busy, or a check fails, the message waits in that chat's inbox and arrives on its next tool call, turn end or prompt. For 2 seconds before it is sent, the island shows the chat it goes to. Saying "cancel" stops it; Esc stops it and keeps the message unsent. Every message ends with a line telling the agent it came by voice, so it answers out loud.
 
 ### Typing into an idle chat
 
@@ -49,7 +49,7 @@ Default Option+Shift+Space, changeable in Settings, Hey Mac. It does the same as
 
 Say "Stop, Mac" while it speaks, or press Escape. See [Agents](agents.md#interrupting) for what the agent receives.
 
-While you talk, press Escape to throw away what you said and start over. Press it twice quickly to stop: a command you started ("Hey Mac, …") is cancelled and nothing is sent; an agent's question is kept as a voicemail.
+Escape closes, everywhere: the voice stops, or listening stops and the island folds away. What you said so far is kept, not sent: a command you started ("Hey Mac, …"), a "which chat?" or the 2-second countdown leaves the message in the history, and "Hey Mac, <chat>" sends it within 5 minutes; an agent's question you were answering waits as a voicemail. Press Escape twice quickly to reset: everything in flight is cancelled, nothing is kept, and it goes back to listening for the wake phrase. The island shows both while it listens or speaks.
 
 ## Do not disturb
 

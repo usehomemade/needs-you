@@ -37,7 +37,7 @@ Keep calling `say` while the person keeps talking, and call `done` when they fin
 
 Saying "Stop, Mac" while it speaks cuts the voice off and listens. The agent gets `"status":"interrupted"` with `spoken_until` (roughly what was heard) and the `transcript` of what the person said next. The conversation stays open, so answer with `say`.
 
-Escape also stops the voice, from any app. Nothing listens afterwards and the conversation ends. The agent gets an empty transcript and a `state` saying so.
+Escape also stops the voice, from any app. Nothing listens afterwards and the conversation ends. The agent gets an empty transcript and a `state` saying so. Escape while the person answers stops listening and keeps the question as a voicemail (`status: "voicemail"`); Escape twice closes the conversation and keeps nothing.
 
 `transcript` has fillers like "uh" and stutters removed. `transcript_verbatim` has the exact words when they differ. Change this in Settings, Microphones, Transcript.
 

@@ -15,7 +15,6 @@ final class VoiceCommands: ObservableObject {
     @Published private(set) var capturing = false {
         didSet { if capturing != oldValue { Hotkeys.shared.escapeWhileCapturing(capturing) } }
     }
-    private var lastEscape = Date.distantPast
     @Published var enabled: Bool = UserDefaults.standard.bool(forKey: "wakeEnabled") {
         didSet {
             UserDefaults.standard.set(enabled, forKey: "wakeEnabled")
@@ -98,6 +97,8 @@ final class VoiceCommands: ObservableObject {
         case cancelled(String)
         /// He did not answer: the message is kept unsent.
         case unanswered
+        /// He pressed Escape once (HM-1429): closed quietly, the message is kept unsent.
+        case closed
     }
 
     /// "Which chat?" as a conversation with no round limit (HM-1408): keeps his message and every
@@ -118,9 +119,14 @@ final class VoiceCommands: ObservableObject {
             turns.append(Turn(role: .agent, text: question))
             let offeredNames = convo.offered.map { allNames[$0] }
             let answer = await Conductor.shared.voiceClarify(question, choices: offeredNames.count, test: test)
-            if Conductor.shared.clarifyEscaped {
-                Isolation.note("clarify: Escape twice -> cancel")
+            switch Conductor.shared.clarifyEscape {
+            case .reset?:
+                Isolation.note("clarify: Escape twice -> reset")
                 return (.cancelled("Escape pressed twice"), turns)
+            case .close?:
+                Isolation.note("clarify: Escape -> closed, kept unsent")
+                return (.closed, turns)
+            case nil: break
             }
             guard let answer, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 Isolation.note("clarify: no answer -> kept unsent")
@@ -178,6 +184,7 @@ final class VoiceCommands: ObservableObject {
         case .picked(let p, let how): r.state = "\(how) \(p.title)"
         case .cancelled(let why): r.state = "cancelled: \(why)"
         case .unanswered: r.state = "unanswered"
+        case .closed: r.state = "closed"
         }
         return r
     }
@@ -378,13 +385,14 @@ final class VoiceCommands: ObservableObject {
     /// the command dropped mid-way), his turn is over: nothing may stay "listening", and
     /// agents may talk again (`capturing` held them back).
     private func commandClosed(_ src: String, _ l: WakeListener?) {
-        if l?.commandOpen == true { return } // started over (Escape once): still his turn
+        if l?.commandOpen == true { return } // a new command opened at once: still his turn
         Island.shared.micClosed(source: src)
         let at = Date()
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
             guard let self, self.capturing, self.firstTake == nil, !self.handling, self.lastTakeAt < at,
                   !self.listener.commandOpen, !self.phoneListener.commandOpen else { return }
             Isolation.note("voice: \(src) command ended without words; turn closed")
+            self.escClosed = nil
             self.capturing = false
             Subtitles.shared.userStopped()
             Island.shared.idle()
@@ -492,9 +500,16 @@ final class VoiceCommands: ObservableObject {
             // The listener already heard the wake word; if this second pass over the
             // command audio spells it differently, do not throw the command away.
             transcript = Wake.containsWakeWord(heard) || heard.isEmpty ? heard : Wake.phrase + ", " + heard
-            if !testOnly { Subtitles.shared.userFinal(heard) }
+            if !testOnly && escClosed == nil { Subtitles.shared.userFinal(heard) }
         } catch {
+            escClosed = nil
             return record(nil, text: "", transcript: "", outcome: .error, error: error.localizedDescription)
+        }
+        // Escape closed it (HM-1429): kept, not sent; nothing is routed.
+        if !testOnly, let at = escClosed, Date().timeIntervalSince(at) < 60 {
+            escClosed = nil
+            let text = Wake.afterWakeWord(transcript) ?? transcript
+            return await keepClosed(at, text: text, transcript: transcript, options: await Router.voiceTargets(testOnly: false))
         }
         return await route(transcript, dryRun: dryRun, testOnly: testOnly)
     }
@@ -570,6 +585,14 @@ final class VoiceCommands: ObservableObject {
             case .picked(let pick, let h):
                 matchedBy = h
                 parsed = .send(pick, text)
+            case .closed:
+                unsent = Unsent(text: text, options: options, at: Date())
+                Island.shared.idle()
+                var r = record(nil, text: text, transcript: transcript, outcome: .notSent, error: "closed with Escape; kept for 5 minutes", turns: turns)
+                r.status = "kept"
+                return r
+            case .cancelled(let why) where why == "Escape pressed twice":
+                return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: why, turns: turns)
             case .cancelled(let why):
                 Sounds.shared.play(.cancelled)
                 await Conductor.shared.speakOnly("Okay, I didn't send it.")
@@ -605,7 +628,11 @@ final class VoiceCommands: ObservableObject {
                 var r = Response(status: "dry_run"); r.transcript = text; r.state = target.title; return r
             }
             Sounds.shared.play(.sending)
+            let closedAt = Escape.lastClose
             let go = await countDown(to: Self.short(target.title))
+            if !go, countdown?.cancelledBy?.hasPrefix("Escape") == true {
+                return await keepClosed(Escape.lastClose ?? closedAt, text: text, transcript: transcript, options: [target], target: target, turns: clarifyTurns)
+            }
             if !go {
                 Sounds.shared.play(.cancelled)
                 return record(target, text: text, transcript: transcript, outcome: .cancelled, error: nil, turns: clarifyTurns)
@@ -718,6 +745,9 @@ final class VoiceCommands: ObservableObject {
         Sounds.shared.play(.sending)
         let go = await countDown(to: "New chat in \(label)")
         guard go else {
+            if countdown?.cancelledBy?.hasPrefix("Escape") == true {
+                return await keepClosed(Escape.lastClose, text: text, transcript: transcript, options: [])
+            }
             Sounds.shared.play(.cancelled)
             return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: nil)
         }
@@ -749,6 +779,9 @@ final class VoiceCommands: ObservableObject {
         }
         Sounds.shared.play(.sending)
         guard await countDown(to: label) else {
+            if countdown?.cancelledBy?.hasPrefix("Escape") == true {
+                return await keepClosed(Escape.lastClose, text: text, transcript: transcript, options: [])
+            }
             Sounds.shared.play(.cancelled)
             return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: nil)
         }
@@ -769,34 +802,55 @@ final class VoiceCommands: ObservableObject {
         }
     }
 
-    /// Escape while he says a command he started (HM-1396): once = start over,
-    /// twice (within half a second) = cancel, nothing sent.
-    func escapeWhileCapturing() {
-        let twice = Date().timeIntervalSince(lastEscape) < 0.5
-        lastEscape = twice ? .distantPast : Date()
+    /// When Escape closed his command (HM-1429): its words are kept, not sent.
+    private var escClosed: Date?
+
+    /// Escape once while he says a command (HM-1429): listening stops now and the pill
+    /// folds away; what he said so far is kept, not sent (`handle` keeps it).
+    func closeCommand() {
+        escClosed = Escape.lastClose ?? Date()
+        listener.endTurn(); phoneListener.endTurn()
         Subtitles.shared.userStopped()
-        if twice {
-            listener.cancelCommand(); phoneListener.cancelCommand()
-            firstTake = nil
-            capturing = false
-            Island.shared.idle()
-            Sounds.shared.play(.cancelled)
-            if oneShot { oneShot = false }
-            refresh()
-            Isolation.note("keys: Escape twice, command cancelled")
-        } else {
-            listener.restartCommand(); phoneListener.restartCommand()
-            Sounds.shared.play(.listening)
-            Subtitles.shared.userBegan(source: "mac")
-            Isolation.note("keys: Escape, command started over")
-        }
+        Island.shared.idle()
+        Sounds.shared.play(.gotIt)
+        if oneShot { oneShot = false }
+        Isolation.note("keys: Escape, command closed (kept, not sent)")
+    }
+
+    /// Escape twice (HM-1429): everything in flight is cancelled and nothing is kept.
+    func resetAll() {
+        countdown?.cancel(by: "Escape twice")
+        listener.cancelCommand(); phoneListener.cancelCommand()
+        listener.stopCancelWatch()
+        firstTake = nil
+        unsent = nil
+        escClosed = nil
+        capturing = false
+        if oneShot { oneShot = false }
+        refresh()
+        Isolation.note("keys: Escape twice, reset: command, kept message and countdown dropped")
     }
 
     /// Escape during the countdown (Hotkeys): true if a send was waiting.
-    func cancelPendingSend() -> Bool {
-        guard let countdown else { return false }
+    func closePendingSend() -> Bool {
+        guard let countdown, !countdown.cancelled else { return false }
         countdown.cancel(by: "Escape")
         return true
+    }
+
+    /// After Escape closed something: the message is kept unsent (HM-1429), or dropped
+    /// when a second Escape reset it. `options`: the chats "Hey Mac, <chat>" can send it to.
+    private func keepClosed(_ at: Date?, text: String, transcript: String, options: [ChatTarget], target: ChatTarget? = nil, turns: [Turn] = []) async -> Response {
+        Island.shared.idle()
+        if await Escape.settle(at) == .reset {
+            return record(target, text: text, transcript: transcript, outcome: .cancelled, error: "Escape pressed twice: dropped", turns: turns)
+        }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return Response(status: "kept") }
+        if !options.isEmpty { unsent = Unsent(text: text, options: options, at: Date()) }
+        var r = record(target, text: text, transcript: transcript, outcome: .notSent,
+                       error: options.isEmpty ? "closed with Escape; not sent" : "closed with Escape; kept for 5 minutes", turns: turns)
+        r.status = "kept"
+        return r
     }
 
     /// Shows the send on the island and waits; false if he cancelled.
@@ -813,7 +867,7 @@ final class VoiceCommands: ObservableObject {
         listener.stopCancelWatch()
         Hotkeys.shared.escapeWhileSending(false)
         if !go {
-            Island.shared.sendCancelled()
+            if c.cancelledBy?.hasPrefix("Escape") == true { Island.shared.idle() } else { Island.shared.sendCancelled() }
             Isolation.note("countdown: cancelled by \(c.cancelledBy ?? "?")")
         }
         return go
@@ -862,7 +916,7 @@ final class VoiceCommands: ObservableObject {
 // MARK: - Send countdown
 
 /// The 2 s between hearing a command and typing it: the island shows where it goes
-/// (`Island.sending`), and "cancel" or Escape stops it. No window of its own.
+/// (`Island.sending`), and "cancel" or Escape stops it (Escape keeps it unsent, HM-1429). No window of its own.
 @MainActor
 final class SendCountdown {
     private(set) var cancelled = false

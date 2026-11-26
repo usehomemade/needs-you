@@ -641,7 +641,7 @@ struct IslandView: View {
             expanded(s) {
                 ears { Orb() } right: { ElapsedTimer(start: model.listenStart) }
             } body: {
-                label("Listening", model.hint)
+                label("Listening", model.hint, keys: true)
                 // The bars move with his voice only while a mic is really open (HM-1414).
                 if PillRules.showsLevels(model.mode, micOpen: model.micOpen) {
                     LevelBars(feed: model.feed, count: 26, height: 28, barWidth: 3, gap: 2, warm: false, wake: false, reduce: model.reduceMotion)
@@ -656,7 +656,11 @@ struct IslandView: View {
                 }
             } body: {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Claude").font(.system(size: 15, weight: .semibold)).kerning(-0.15).foregroundStyle(Ink.user1)
+                    HStack(spacing: 6) {
+                        Text("Claude").font(.system(size: 15, weight: .semibold)).kerning(-0.15).foregroundStyle(Ink.user1)
+                        Spacer(minLength: 4)
+                        EscHint()
+                    }
                     SpokenLine(chunks: model.chunks, starts: model.chunkStarts, start: model.speakStart)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -714,12 +718,49 @@ struct IslandView: View {
         }
     }
 
-    private func label(_ title: String, _ sub: String, titleColor: Color = Ink.user1) -> some View {
+    private func label(_ title: String, _ sub: String, titleColor: Color = Ink.user1, keys: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(.system(size: 15, weight: .semibold)).kerning(-0.15).foregroundStyle(titleColor)
+            HStack(spacing: 6) {
+                Text(title).font(.system(size: 15, weight: .semibold)).kerning(-0.15).foregroundStyle(titleColor)
+                if keys { Spacer(minLength: 4); EscHint() }
+            }
             Text(sub).font(.system(size: 12)).foregroundStyle(Ink.muted).lineLimit(1).truncationMode(.tail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// What Escape does here (HM-1429), quiet: "[esc] close  [esc]×2 reset".
+private struct EscHint: View {
+    var body: some View {
+        HStack(spacing: 4) {
+            Keycap(text: "esc")
+            Text("close")
+            Keycap(text: "esc").padding(.leading, 4)
+            Text("\u{00D7}2 reset").padding(.leading, -2)
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(Ink.muted)
+        .lineLimit(1)
+        .fixedSize()
+        .accessibilityLabel("Escape closes. Escape twice resets.")
+    }
+}
+
+/// A small macOS-style key: rounded, hairline border, a slightly raised bottom edge.
+private struct Keycap: View {
+    var text: String
+    var body: some View {
+        Text(text)
+            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+            .foregroundStyle(Ink.muted)
+            .padding(.horizontal, 4)
+            .frame(height: 15)
+            .background(RoundedRectangle(cornerRadius: 3.5, style: .continuous).fill(Color.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 3.5, style: .continuous).strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5))
+            .overlay(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 3.5, style: .continuous).fill(Color.white.opacity(0.10)).frame(height: 1).padding(.horizontal, 1.5)
+            }
     }
 }
 
