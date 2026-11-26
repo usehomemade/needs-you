@@ -1,14 +1,14 @@
 ---
 id: TASK-57
 title: Open the right System Settings page whenever Needs You needs a permission
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T12:25:25Z'
-updated_date: '2026-11-26T20:16:37Z'
+updated_date: '2026-11-26T21:57:50Z'
 labels:
   - hm-1405
 dependencies: []
-ordinal: 57000
+ordinal: 62.5
 ---
 
 ## Description
@@ -43,4 +43,6 @@ Waiting on the owner: Turn off Accessibility for Needs You (v1.3.0 or later), se
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26 status check: Back to In Review: the note above says it waits on the owner, so Done was wrong. Code ships since v1.3.0 (1e0f80e); audio.log shows "permissions: accessibility is off, opening its System Settings page" once on 26 Nov 12:32 UTC. Whether the page shows the Needs You switch is not proven. Owner check: turn off Accessibility for Needs You, send a voice message, and see that System Settings opens on the right page.
+
+2026-11-26: the owner reviewed it and moved it to Done.
 <!-- SECTION:NOTES:END -->

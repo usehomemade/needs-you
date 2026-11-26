@@ -3,14 +3,14 @@ id: TASK-45
 title: >-
   Reach idle chats in any app through macOS Accessibility (find window/tab,
   paste, Enter), no per-app code
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-25T13:42:55Z'
-updated_date: '2026-11-26T20:16:36Z'
+updated_date: '2026-11-26T21:57:50Z'
 labels:
   - hm-1374
 dependencies: []
-ordinal: 45000
+ordinal: 375
 ---
 
 ## Description
@@ -179,4 +179,6 @@ Waiting on the owner: run the live test from the 25 Nov 14:51 comment (say "Hey 
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26 status check: In Review. Accessibility delivery ships in v1.1.0 to v1.6.0. Real use: on 26 Nov 14:56 UTC a real voice message was typed into an idle herdr pane in Ghostty ("ax: picked ... in Ghostty", "ax: pasted and sent"), and route learning recorded it. Later 15:12 to 15:13 runs were test-pane runs. No real delivery into a chat app window (Claude app, ChatGPT) is in the logs. Known gap stays: when the window is unclear the message waits in the inbox instead of asking "1 or 2?". Owner check: say "Hey Mac, <a Claude app chat>: say hi back" while another app is in front.
+
+2026-11-26: the owner reviewed it and moved it to Done.
 <!-- SECTION:NOTES:END -->

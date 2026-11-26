@@ -3,14 +3,14 @@ id: TASK-54
 title: >-
   Sending to a Claude app chat that is not open fails with "That chat changed
   its title (now Claude app)"
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T11:17:24Z'
-updated_date: '2026-11-26T20:16:37Z'
+updated_date: '2026-11-26T21:57:50Z'
 labels:
   - hm-1397
 dependencies: []
-ordinal: 54000
+ordinal: 125
 ---
 
 ## Description
@@ -32,4 +32,6 @@ Status check (two independent checks): The fix is on main of usehomemade/needs-y
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26 status check: Still In Review. The fix (commit 14554c4, Router.verify no longer compares titles for sidebar chats) is in v1.2.0 and the installed v1.6.0. audio.log has no send to a closed Claude app sidebar chat since then, so it is not proven in real use. Owner check: say "Hey Mac, <a Claude app chat that is not open>: hi" and confirm it sends without the title error.
+
+2026-11-26: the owner reviewed it and moved it to Done.
 <!-- SECTION:NOTES:END -->

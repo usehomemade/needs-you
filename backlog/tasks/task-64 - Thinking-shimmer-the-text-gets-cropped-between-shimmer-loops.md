@@ -1,14 +1,14 @@
 ---
 id: TASK-64
 title: 'Thinking shimmer: the text gets cropped between shimmer loops'
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T14:53:07Z'
-updated_date: '2026-11-26T20:16:38Z'
+updated_date: '2026-11-26T21:57:51Z'
 labels:
   - hm-1416
 dependencies: []
-ordinal: 64000
+ordinal: 46.875
 ---
 
 ## Description
@@ -37,4 +37,6 @@ Done (two independent checks agreed): commit 49b024a fixes the Thinking shimmer 
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26 status check: Back to In Review: no test or recording proves it, and the note above says so. Fix 49b024a is in v1.5.0 and the installed v1.6.0. Owner check: watch the pill while it says Thinking and confirm no letters blank out between sweeps.
+
+2026-11-26: the owner reviewed it and moved it to Done.
 <!-- SECTION:NOTES:END -->

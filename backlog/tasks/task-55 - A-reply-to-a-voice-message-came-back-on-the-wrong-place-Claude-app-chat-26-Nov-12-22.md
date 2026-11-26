@@ -3,14 +3,14 @@ id: TASK-55
 title: >-
   A reply to a voice message came back on the wrong place (Claude app chat, 26
   Nov 12:22)
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T11:25:30Z'
-updated_date: '2026-11-26T20:16:37Z'
+updated_date: '2026-11-26T21:57:50Z'
 labels:
   - hm-1398
 dependencies: []
-ordinal: 55000
+ordinal: 312.5
 ---
 
 ## Description
@@ -49,4 +49,6 @@ Status check (two independent checks): The fix is on needs-you main in commit 14
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26 status check: Still In Review. The fix (14554c4) is in v1.2.0 and later; installed app is v1.6.0. Needs two Macs to prove, and no log here shows it. Owner check: with Needs You on both Macs, send one voice message into a Claude app chat and confirm only the Mac that heard it speaks the reply.
+
+2026-11-26: the owner reviewed it and moved it to Done.
 <!-- SECTION:NOTES:END -->

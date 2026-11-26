@@ -1,14 +1,14 @@
 ---
 id: TASK-33
 title: Native macOS app icon from the beam (blue left, orange right)
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-24T21:40:14Z'
-updated_date: '2026-11-26T20:08:01Z'
+updated_date: '2026-11-26T21:57:50Z'
 labels:
   - hm-1357
 dependencies: []
-ordinal: 33000
+ordinal: 500
 ---
 
 ## Description
@@ -44,4 +44,6 @@ Waiting on the owner: open [private preview link removed] and approve the icon o
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26 check: The icon is committed in Resources/AppIcon and ships in v1.0.0 and every release since. No approval or change request from the owner is recorded. For the owner: look at the Needs You icon in the Dock and say whether it stays.
+
+2026-11-26: the owner reviewed it and moved it to Done.
 <!-- SECTION:NOTES:END -->

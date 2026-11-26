@@ -1,14 +1,14 @@
 ---
 id: TASK-67
 title: Public website for Needs You at needsyou.homemade.dev
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-26T16:05:08Z'
-updated_date: '2026-11-26T20:16:39Z'
+updated_date: '2026-11-26T21:57:51Z'
 labels:
   - hm-1427
 dependencies: []
-ordinal: 67000
+ordinal: 39.0625
 ---
 
 ## Description
@@ -73,4 +73,6 @@ Shipped 34b6a6b to needsyou.homemade.dev: Apple Sonoma wallpaper (light/dark), D
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26 status check: Moved from In Progress to In Review: nobody is working on it and there is no uncommitted work. The site is live from 34b6a6b. Owner check: open the site on the iPhone and on the Mac and say if it is good to keep.
+
+2026-11-26: the owner reviewed it and moved it to Done.
 <!-- SECTION:NOTES:END -->

@@ -3,14 +3,14 @@ id: TASK-38
 title: >-
   Support any agent and terminal, not only Claude Code + herdr (adapters,
   nothing hard-coded)
-status: In Review
+status: Done
 assignee: []
 created_date: '2026-11-25T11:37:24Z'
-updated_date: '2026-11-26T20:16:35Z'
+updated_date: '2026-11-26T21:57:50Z'
 labels:
   - hm-1364
 dependencies: []
-ordinal: 38000
+ordinal: 250
 ---
 
 ## Description
@@ -149,4 +149,6 @@ Tracker hygiene: moved from In Progress to Todo and added Needs owner, because n
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26 status check: In Review. Shipped across v1.0.0 to v1.6.0: MCP server, inbox delivery through hooks, Cursor and ChatGPT, Accessibility delivery, per-app switches. Real use in audio.log on 26 Nov: Claude Code chats got voice messages through the Stop, PostToolUse and UserPromptSubmit hooks, and a real voice message was typed into an idle herdr pane in Ghostty through Accessibility (14:56 UTC). No real delivery to a non-Claude agent (Codex, Cursor, ChatGPT) is in the logs yet. Owner check: send one voice message to a Codex or Cursor chat and confirm it arrives.
+
+2026-11-26: the owner reviewed it and moved it to Done.
 <!-- SECTION:NOTES:END -->
