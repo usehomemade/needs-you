@@ -4,25 +4,22 @@ import { startScene } from "./scene";
 
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Theme: follows the system until you pick one. The header button flips
-// light/dark; the footer switch also offers "system". Stored in localStorage,
-// or in window.name where storage is blocked (sandboxed previews).
+// Theme: dark until you pick another. The header button flips light/dark;
+// the footer switch also offers "system". Stored in localStorage, or in
+// window.name where storage is blocked (sandboxed previews).
 const KEY = "ny-theme";
 const root = document.documentElement;
 const dark = window.matchMedia("(prefers-color-scheme: dark)");
 const readChoice = () => {
   let t: string | null = null;
   try { t = localStorage.getItem(KEY); } catch {}
-  if (!t) t = /(?:^|;)ny-theme=(light|dark)/.exec(window.name || "")?.[1] ?? null;
-  return t === "light" || t === "dark" ? t : "system";
+  if (!t) t = /(?:^|;)ny-theme=(light|dark|system)/.exec(window.name || "")?.[1] ?? null;
+  return t === "light" || t === "system" ? t : "dark";
 };
 const saveChoice = (choice: string) => {
-  try {
-    if (choice === "system") localStorage.removeItem(KEY);
-    else localStorage.setItem(KEY, choice);
-  } catch {}
+  try { localStorage.setItem(KEY, choice); } catch {}
   const rest = (window.name || "").split(";").filter((p) => p && !p.startsWith(KEY + "="));
-  if (choice !== "system") rest.push(KEY + "=" + choice);
+  rest.push(KEY + "=" + choice);
   try { window.name = rest.join(";"); } catch {}
 };
 const themeButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-theme-choice]")];
@@ -72,65 +69,87 @@ if (!reduced() && "IntersectionObserver" in window) {
   for (const el of document.querySelectorAll(".ny-reveal")) io.observe(el);
 }
 
-// Copy buttons.
+// Copy buttons. The Clipboard API can be blocked (sandboxed iframes, old
+// browsers), so fall back to execCommand on a hidden textarea, and if that
+// fails too, select the command so it can be copied by hand.
+const copyText = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {}
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch {}
+  ta.remove();
+  return ok;
+};
 for (const b of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+  let timer = 0;
   b.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(b.dataset.copy ?? "");
-      b.dataset.done = "";
-      b.setAttribute("aria-label", "Copied");
-      setTimeout(() => {
-        delete b.dataset.done;
-        b.setAttribute("aria-label", "Copy command");
-      }, 1600);
-    } catch {}
+    const ok = await copyText(b.dataset.copy ?? "");
+    if (!ok) {
+      const code = b.parentElement?.querySelector("code");
+      if (code) {
+        const r = document.createRange();
+        r.selectNodeContents(code);
+        const s = window.getSelection();
+        s?.removeAllRanges();
+        s?.addRange(r);
+      }
+      b.setAttribute("aria-label", "Press Command-C to copy");
+      return;
+    }
+    b.dataset.done = "";
+    b.setAttribute("aria-label", "Copied");
+    clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      delete b.dataset.done;
+      b.setAttribute("aria-label", "Copy command");
+    }, 1500);
   });
 }
 
-// GitHub numbers: the build wrote them into the page; refresh them here so a
-// cached page still shows today's count. Any failure keeps the built values.
+// GitHub numbers: fetched live on every page load. Nothing is baked into the
+// page; until the answer arrives the numbers stay hidden (or show "–"), and if
+// GitHub can't be reached the links point at the releases page.
 const REPO = "usehomemade/needs-you";
 const compact = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "")}k` : String(n);
-const setStat = (name: string, text: string, show = true) => {
+const setStat = (name: string, text: string) => {
   for (const el of document.querySelectorAll<HTMLElement>(`[data-stat="${name}"]`)) {
+    const icon = el.querySelector("svg");
     el.textContent = text;
-    const box = el.closest<HTMLElement>("[data-stat-box]") ?? el;
-    box.hidden = !show;
+    if (icon) el.prepend(icon);
+    el.hidden = false;
+    const box = el.closest<HTMLElement>("[data-stat-box]");
+    if (box) box.hidden = false;
   }
 };
+interface Asset { name: string; download_count: number; browser_download_url: string }
+interface Release { tag_name: string; html_url: string; published_at: string; draft: boolean; prerelease: boolean; assets: Asset[] }
+const gh = (path: string) =>
+  fetch(`https://api.github.com/repos/${REPO}${path}`, { headers: { Accept: "application/vnd.github+json" } }).then((r) => (r.ok ? r.json() : null));
 const refresh = async () => {
-  const cacheKey = "ny-gh";
-  let data: { stars: number; version?: string; dmg?: string } | null = null;
-  try {
-    const c = JSON.parse(sessionStorage.getItem(cacheKey) ?? "null");
-    if (c && Date.now() - c.at < 10 * 60 * 1000) data = c;
-  } catch {}
-  if (!data) {
-    const [repo, rel] = await Promise.all([
-      fetch(`https://api.github.com/repos/${REPO}`).then((r) => (r.ok ? r.json() : null)),
-      fetch(`https://api.github.com/repos/${REPO}/releases/latest`).then((r) => (r.ok ? r.json() : null)),
-    ]);
-    if (!repo) return;
-    data = {
-      stars: repo.stargazers_count,
-      version: rel?.tag_name?.replace(/^v/, ""),
-      dmg: rel?.assets?.find((a: { name: string }) => a.name.endsWith(".dmg"))?.browser_download_url,
-    };
-    try {
-      sessionStorage.setItem(cacheKey, JSON.stringify({ ...data, at: Date.now() }));
-    } catch {}
-  }
-  if (typeof data.stars === "number") {
-    for (const el of document.querySelectorAll<HTMLElement>('[data-stat="stars"]')) {
-      const icon = el.querySelector("svg");
-      el.textContent = compact(data.stars);
-      if (icon) el.prepend(icon);
-      el.hidden = false;
-    }
-  }
-  if (data.version) setStat("version", data.version);
-  if (data.dmg) for (const a of document.querySelectorAll<HTMLAnchorElement>("[data-dmg]")) a.href = data.dmg;
+  const [repo, releases] = await Promise.all([gh(""), gh("/releases?per_page=100")]);
+  if (repo && typeof repo.stargazers_count === "number") setStat("stars", compact(repo.stargazers_count));
+  if (!Array.isArray(releases)) return;
+  const list = (releases as Release[]).filter((r) => !r.draft && !r.prerelease);
+  const latest = list[0];
+  if (!latest) return;
+  setStat("version", latest.tag_name.replace(/^v/, ""));
+  const date = new Date(latest.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  setStat("released", `Latest version, ${date}`);
+  setStat("releases", String(list.length));
+  const downloads = list.flatMap((r) => r.assets).filter((a) => /\.(dmg|zip)$/.test(a.name)).reduce((n, a) => n + a.download_count, 0);
+  if (downloads >= 100) setStat("downloads", compact(downloads)); // too few to be worth showing yet
+  for (const a of document.querySelectorAll<HTMLAnchorElement>("[data-release]")) a.href = latest.html_url;
+  const dmg = latest.assets.find((a) => a.name.endsWith(".dmg"));
+  if (dmg) for (const a of document.querySelectorAll<HTMLAnchorElement>("[data-dmg]")) a.href = dmg.browser_download_url;
 };
 refresh().catch(() => {});
 

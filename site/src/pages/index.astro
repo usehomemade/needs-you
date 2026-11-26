@@ -2,15 +2,9 @@
 import HeroScene from "../components/HeroScene.astro";
 import Icon from "../components/Icons.astro";
 import Base from "../layouts/Base.astro";
-import { compact, LICENSE_URL, REPO_URL, repoStats } from "../lib/github";
+import { LATEST_URL, LICENSE_URL, REPO_URL, RELEASES_URL } from "../lib/github";
 
-const stats = await repoStats();
 const BREW = "brew install --cask usehomemade/tap/needs-you";
-const released = stats.releasedAt
-  ? new Date(stats.releasedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-  : null;
-// Download totals are only worth showing once there are a few.
-const showDownloads = (stats.downloads ?? 0) >= 100;
 
 const faq = [
   { q: "Is it free?", a: "Yes. There's no account, no subscription and no paid version. Download it from GitHub or install it with Homebrew, and it updates itself." },
@@ -34,10 +28,10 @@ const faq = [
       <h1 class="ny-rise">Talk to your agents. Your voice stays on your Mac.</h1>
       <p class="ny-subhead ny-rise ny-rise-2">When Claude Code or Codex needs you, it asks out loud and you answer by talking. Free, open source under GPL-3.0, no account.</p>
       <div class="ny-hero-cta ny-rise ny-rise-2">
-        <a class="ny-btn ny-btn-primary" href={stats.dmgUrl} data-dmg><Icon name="download" /> Download for Mac</a>
+        <a class="ny-btn ny-btn-primary" href={LATEST_URL} data-dmg><Icon name="download" /> Download for Mac</a>
         <a class="ny-btn ny-btn-secondary" href={REPO_URL}>
           <Icon name="github" /> Star on GitHub
-          <span class="ny-count" data-stat="stars" hidden={stats.stars == null}><Icon name="star" />{stats.stars == null ? "" : compact(stats.stars)}</span>
+          <span class="ny-count" data-stat="stars" hidden><Icon name="star" /></span>
         </a>
       </div>
       <div class="ny-rise ny-rise-3">
@@ -48,7 +42,7 @@ const faq = [
             <svg class="ny-copied" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-6.5" /></svg>
           </button>
         </div>
-        <p class="ny-note ny-hero-meta">Version <span data-stat="version">{stats.version}</span> · macOS 14 or later · Apple Silicon · Made by <a href="https://homemade.dev">Homemade</a></p>
+        <p class="ny-note ny-hero-meta"><span data-stat-box hidden>Version <span data-stat="version"></span> · </span>macOS 14 or later · Apple Silicon · Made by <a href="https://homemade.dev">Homemade</a></p>
       </div>
     </div>
     <div class="ny-rise ny-rise-3"><HeroScene /></div>
@@ -107,7 +101,7 @@ const faq = [
         <li><span class="ny-step-num" aria-hidden="true">3</span><span><strong>Connect your agents</strong><span class="ny-step-body">In Settings, open Agents and switch on Claude Code, Codex or the Claude app.</span></span></li>
         <li><span class="ny-step-num" aria-hidden="true">4</span><span><strong>Try it</strong><span class="ny-step-body">Run <code>needs-you ask "Shall I deploy?"</code> in a terminal and answer out loud.</span></span></li>
       </ol>
-      <p class="ny-actions"><a class="ny-btn ny-btn-primary" href={stats.dmgUrl} data-dmg>Download for Mac</a></p>
+      <p class="ny-actions"><a class="ny-btn ny-btn-primary" href={LATEST_URL} data-dmg>Download for Mac</a></p>
     </div>
   </section>
 
@@ -116,22 +110,18 @@ const faq = [
     <p class="ny-subhead">Licensed under GPL-3.0. If you share a changed version, it has to stay open source too.</p>
     <div class="ny-stats">
       <a class="ny-stat" href={`${REPO_URL}/stargazers`} data-stat-box>
-        <b data-stat="stars">{stats.stars === null ? "–" : compact(stats.stars)}</b><span>Stars on GitHub</span>
+        <b data-stat="stars">–</b><span>Stars on GitHub</span>
       </a>
-      <a class="ny-stat" href={stats.releaseUrl}>
-        <b data-stat="version">{stats.version}</b><span>{released ? `Latest version, ${released}` : "Latest version"}</span>
+      <a class="ny-stat" href={LATEST_URL} data-release>
+        <b data-stat="version">–</b><span data-stat="released">Latest version</span>
       </a>
-      {stats.releases !== null && (
-        <a class="ny-stat" href={`${REPO_URL}/releases`}><b>{stats.releases}</b><span>Releases so far</span></a>
-      )}
-      {showDownloads && stats.downloads !== null && (
-        <div class="ny-stat"><b>{compact(stats.downloads)}</b><span>Downloads</span></div>
-      )}
+      <a class="ny-stat" href={RELEASES_URL} data-stat-box hidden><b data-stat="releases"></b><span>Releases so far</span></a>
+      <div class="ny-stat" data-stat-box data-min="100" hidden><b data-stat="downloads"></b><span>Downloads</span></div>
     </div>
     <p class="ny-actions">
       <a class="ny-btn ny-btn-secondary" href={REPO_URL}><Icon name="star" /> Star the repo</a>
       <a class="ny-btn ny-btn-secondary" href={LICENSE_URL}>License</a>
-      <a class="ny-btn ny-btn-secondary" href={stats.releaseUrl}>Release notes</a>
+      <a class="ny-btn ny-btn-secondary" href={LATEST_URL} data-release>Release notes</a>
     </p>
   </section>
 
@@ -163,7 +153,7 @@ const faq = [
     <h2>Let your agents ask.</h2>
     <p class="ny-subhead">Free and open source. Your voice stays on your Mac.</p>
     <p class="ny-actions">
-      <a class="ny-btn ny-btn-primary" href={stats.dmgUrl} data-dmg><Icon name="download" /> Download for Mac</a>
+      <a class="ny-btn ny-btn-primary" href={LATEST_URL} data-dmg><Icon name="download" /> Download for Mac</a>
       <a class="ny-btn ny-btn-secondary" href={REPO_URL}><Icon name="github" /> View on GitHub</a>
     </p>
   </section>
