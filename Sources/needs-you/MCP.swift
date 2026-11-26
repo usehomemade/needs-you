@@ -22,7 +22,7 @@ final class MCPServer {
     static let instructions = """
     Needs You lets the user talk to this chat by voice and lets you talk to them out loud.
     Call `status` with one short line on what this chat is working on whenever the topic changes (it is how the user's spoken messages find this chat). \
-    Use `ask` when you need the user (a decision, approval, login, anything blocking); `say` to answer a follow-up; `done` to end the conversation. \
+    Use `ask` when you need the user (a decision, approval, login, anything blocking); `say` to answer a follow-up; `done` to end the conversation. A question always needs an answer, so ask it with `ask` (or `say` without no_listen), never with no_listen. \
     A message ending with "(sent by voice: reply by voice with needs-you)" came from the user's voice: reply out loud with `ask` or `say` (no_listen when no answer is needed), brief, and also in the chat. When it says "sent by voice from <Mac>", pass that name as for_mac. \
     Only the main agent uses Needs You: a subagent never calls these tools; it puts its question in its report and the main agent asks.
     """
@@ -119,7 +119,7 @@ final class MCPServer {
         tool("ask", "Ask the user out loud and wait for the spoken answer (a decision, approval, login, anything blocking). Returns JSON: status answered|voicemail|no_answer|interrupted, transcript, conversation_id.",
              ["text": str("One or two spoken sentences"), "title": str("Short title"), "context": str("Exact steps or commands, shown with the question"), "for_mac": forMac], required: ["text"]),
         tool("say", "Continue the open conversation: speak, then listen for the reply (unless no_listen).",
-             ["text": str("What to say"), "conversation_id": str("From ask"), "no_listen": ["type": "boolean", "description": "Speak without waiting for an answer"], "for_mac": forMac], required: ["text"]),
+             ["text": str("What to say"), "conversation_id": str("From ask"), "no_listen": ["type": "boolean", "description": "Speak without waiting for an answer. Only for news that needs no reply; never for a question"], "for_mac": forMac], required: ["text"]),
         tool("done", "End the conversation, optionally saying something first.",
              ["text": str("Last words (optional)"), "conversation_id": str("From ask")], required: []),
         tool("inbox", "Messages from the user waiting for this chat (they normally arrive by themselves).", [:], required: []),
