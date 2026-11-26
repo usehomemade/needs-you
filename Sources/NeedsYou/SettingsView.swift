@@ -247,6 +247,7 @@ struct VoicePane: View {
     @AppStorage("localVoice") private var localVoice = "af_heart"
     @AppStorage("volume") private var volume = 0.9
     @AppStorage("soundVolume") private var soundVolume = 1.0
+    @AppStorage(Ducker.defaultsKey) private var duckWhileListening = true
     @AppStorage(SoundSet.key) private var soundSet = SoundSet.rosewood.rawValue
     @AppStorage("subtitlesOnScreen") private var subtitlesOnScreen = true
     @AppStorage("islandStyle") private var islandStyle = Island.Style.automatic.rawValue
@@ -284,6 +285,13 @@ struct VoicePane: View {
                     Button(previewing ? "Playing\u{2026}" : "Preview Voice") { preview() }
                         .disabled(previewing)
                 }
+            }
+            Section {
+                Toggle("Lower Other Audio While You Talk", isOn: $duckWhileListening)
+                    .onChange(of: duckWhileListening) { _, on in if !on { Ducker.shared.releaseAll() } }
+            } footer: {
+                Text("Music and videos get quieter after \u{201C}\(Wake.phrase)\u{201D} or the turn shortcut, and while you answer, the same way they do while Needs You speaks.")
+                    .foregroundStyle(.secondary)
             }
             Section {
                 ForEach(VoiceRouting.native, id: \.self) { code in nativeRow(code) }

@@ -75,13 +75,18 @@ final class VoicePlayer {
             try? await WakeListener().prepare()
         }
         if WakeListener.analyzerFormatCache == nil { detecting = false }
+        // Its voice processing ducks other audio on its own: the listening ducker
+        // steps aside meanwhile (HM-1413) and takes over again after, if he still talks.
+        defer { Ducker.shared.voice(false) }
         do {
             let vp = UserDefaults.standard.object(forKey: "bargeInVoiceProcessing") as? Bool ?? true
+            if detecting && vp { Ducker.shared.voice(true) }
             try start(format: buf.format, volume: volume, detect: detecting, voiceProcessing: vp)
             Isolation.note("voice: playing, stop detector \(detecting ? "on" : "off"), voice processing \(detecting && vp ? "on" : "off")")
         } catch {
             Isolation.note("voice: voice processing failed (\(error.localizedDescription)); plain playback")
             teardown()
+            Ducker.shared.voice(false)
             engine = AVAudioEngine()
             do { try start(format: buf.format, volume: volume, detect: detecting, voiceProcessing: false) } catch {
                 Isolation.note("voice: detector failed (\(error.localizedDescription)); playing without it")

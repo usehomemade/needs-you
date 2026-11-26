@@ -330,6 +330,20 @@ final class Conductor: ObservableObject {
             r.state = { switch how { case .typed(let a): return (scan ? "would type into " : "typed into ") + a; case .queued(let w): return (scan ? "would not type: " : "not typed: ") + w } }()
             r.transcript = String(format: "%.0f ms | ", Date().timeIntervalSince(t0) * 1000) + AXDelivery.lastLog.joined(separator: " | ")
             return r
+        case .voice where (req.context ?? "").hasPrefix("duck"):
+            // Ducking hooks (HM-1413), never any audio of its own:
+            //   voice-test --title duck:on     lower other audio as if he were talking
+            //   voice-test --title duck:off    bring it back
+            //   voice-test --title duck:probe  does ducking change what a plain mic engine hears?
+            var r = Response(status: "measured")
+            switch req.context ?? "" {
+            case "duck:on": Ducker.shared.hold("test"); try? await Task.sleep(nanoseconds: 800_000_000)
+            case "duck:off": Ducker.shared.release("test"); try? await Task.sleep(nanoseconds: 1_600_000_000)
+            case "duck:probe": r.transcript = await Ducker.probe()
+            default: break
+            }
+            r.state = "ducking \(Ducker.shared.active ? "on" : "off"), setting \(Ducker.enabled ? "on" : "off")"
+            return r
         case .voice where (req.context ?? "").hasPrefix("keys"):
             // Silent shortcut hooks (HM-1353, HM-1354), never any audio:
             //   voice-test --title keys          what the turn shortcut would do now
@@ -854,7 +868,11 @@ final class Conductor: ObservableObject {
             Hotkeys.shared.escapeWhileListening(true)
         }
         defer { answering = false; Hotkeys.shared.escapeWhileListening(false) }
+        // He answers: other audio is lowered until listening ends, on every path (HM-1413).
+        // (After the chime, so the chime itself is not lowered.)
+        defer { Ducker.shared.release("answer") }
         if cues { await Sounds.shared.playAndWait(.listening) }
+        if cues && testFile == nil { Ducker.shared.hold("answer") }
 
         // The wait applies until he starts talking. A filler-only turn ("ähm")
         // does not count: keep listening, with the wait starting over.

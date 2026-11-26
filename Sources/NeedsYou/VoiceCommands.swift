@@ -178,6 +178,7 @@ final class VoiceCommands: ObservableObject {
             l.onCommandPartial = { text, swap in DispatchQueue.main.async { Subtitles.shared.userPartial(text, source: src, swap: swap); ModelRouter.shared.partial(text) } }
             l.onCommandLevel = { v in DispatchQueue.main.async { Subtitles.shared.level(v, .user, source: src) } }
             l.onHeard = { [weak self] text in DispatchQueue.main.async { self?.noteHeard(text) } }
+            l.onCommandMode = { on in Ducker.shared.set("command:\(src)", on) }
             l.onWake = { [weak self, weak other] in
                 DispatchQueue.main.async {
                     guard let self else { return }

@@ -55,7 +55,12 @@ final class WakeListener {
     private var analyzerFormat: AVAudioFormat?
     private let q = DispatchQueue(label: "needs-you.wake")
 
-    private var mode: Mode = .gate
+    /// A command starts (after the wake phrase or the turn shortcut) or ends, on every
+    /// path out: sent, silence, Escape, stop (HM-1413: other audio is lowered meanwhile).
+    var onCommandMode: ((Bool) -> Void)?
+    private var mode: Mode = .gate {
+        didSet { if (mode == .command) != (oldValue == .command) { onCommandMode?(mode == .command) } }
+    }
     private var floor: Float = -60
     private var loudRun = 0.0, quietRun = 0.0, segmentTime = 0.0
     private var preroll: [AVAudioPCMBuffer] = []

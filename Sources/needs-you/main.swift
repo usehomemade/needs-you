@@ -48,6 +48,8 @@ if verb == "chats" {
 }
 // Claude Code PermissionRequest hook (installed from Settings → Agents, HM-1369).
 if verb == "permission-hook" { PermissionHookCLI.run() }
+// Lowers other audio while he talks; started by the app (HM-1413).
+if verb == "duck-hold" { DuckHold.run() }
 guard let command = Request.Command(rawValue: verb) else { fail("unknown command: \(verb)\n\n\(usage)") }
 
 var request = Request(command: command)
