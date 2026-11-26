@@ -8,7 +8,9 @@
  * edges, the spoken answer goes back as the tool result; then "Hey Mac" sends a
  * message to Codex in another window. The island, the beam and the subtitles
  * copy the app's own code (Island.swift, Glow.swift, Subtitles.swift). Names
- * and code are made up.
+ * and code are made up. The wallpaper is our own (public/scene, light and
+ * dark), and the Dock has neutral icons drawn here plus Homemade and Needs You
+ * side by side.
  */
 const bars26 = Array.from({ length: 26 });
 const bars5 = Array.from({ length: 5 });
@@ -84,6 +86,34 @@ const bars5 = Array.from({ length: 5 });
 </span>
 <span class="d">› </span><span class="ph" data-show="placeholder">Ask Codex to do anything</span></pre>
         </section>
+
+        <div class="sc-dock">
+          <span class="sc-dock-item" data-name="Finder">
+            <img src="/scene/dock/finder.webp" alt="" width="48" height="48" />
+            <i class="sc-dock-run"></i>
+          </span>
+          <span class="sc-dock-item" data-name="Safari">
+            <img src="/scene/dock/safari.webp" alt="" width="48" height="48" />
+          </span>
+          <span class="sc-dock-item" data-name="System Settings">
+            <img src="/scene/dock/settings.webp" alt="" width="48" height="48" />
+          </span>
+          <span class="sc-dock-item" data-name="Ghostty">
+            <img src="/scene/dock/ghostty.webp" alt="" width="48" height="48" />
+            <i class="sc-dock-run"></i>
+          </span>
+          <a class="sc-dock-item" data-name="Homemade" href="https://homemade.dev/home" aria-label="Homemade">
+            <img src="/brand/homemade-on-dark.svg" alt="" width="48" height="48" class="sc-dock-hm" />
+          </a>
+          <span class="sc-dock-item" data-name="Needs You">
+            <img src="/icons/icon-128.png" alt="" width="48" height="48" />
+            <i class="sc-dock-run"></i>
+          </span>
+          <span class="sc-dock-sep"></span>
+          <span class="sc-dock-item" data-name="Trash">
+            <img src="/scene/dock/trash.webp" alt="" width="48" height="48" />
+          </span>
+        </div>
 
         <canvas class="sc-beam" width="756" height="491"></canvas>
 

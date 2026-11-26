@@ -264,7 +264,7 @@ html[data-theme="dark"] {
 .sc-term .ph { color: #6b6b6b; }
 .sc-term [hidden] { display: none; }
 @keyframes sc-blink { 50% { opacity: 0.35; } }
-.sc-claude { inset: 62px auto auto 150px; inline-size: 860px; block-size: 870px; z-index: 2; }
+.sc-claude { inset: 62px auto auto 150px; inline-size: 860px; block-size: 838px; z-index: 2; }
 .sc-claude .sc-term { font-size: 16px; padding: 10px 20px 20px; }
 .sc-codex { inset: 330px auto auto 1046px; inline-size: 430px; z-index: 1; }
 .sc-codex .sc-term { font-size: 13.5px; }
@@ -272,7 +272,7 @@ html[data-theme="dark"] {
 
 .sc-beam { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; z-index: 5; pointer-events: none; }
 
-.sc-subs { position: absolute; inset: auto 0 69px; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
+.sc-subs { position: absolute; inset: auto 0 104px; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
 .sc-subs p { margin: 0; max-inline-size: 1180px; padding: 12px 25px; border-radius: 16px; background: rgb(20 20 22 / 78%); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
   font-size: 36px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; text-align: center; color: #fff; opacity: 0; transition: opacity 0.3s ease-out; }
 .sc-subs p[data-on] { opacity: 1; }
@@ -325,8 +325,38 @@ html[data-theme="dark"] {
   .sc { inline-size: calc(100% - 24px); }
 }
 
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sc-inner { --wall: linear-gradient(180deg, #2c2d32, #202125); --mb: rgb(255 255 255 / 92%); --mb-bg: rgb(0 0 0 / 18%); } }
-html[data-theme="dark"] .sc-inner { --wall: linear-gradient(180deg, #2c2d32, #202125); --mb: rgb(255 255 255 / 92%); --mb-bg: rgb(0 0 0 / 18%); }
+/* The desktop: an original wallpaper (rendered for this site, not one of
+   Apple's), light and dark like a dynamic one, and a Dock. */
+.sc-inner { --wall: #8db8f2 url("/scene/wallpaper-light.webp") center / cover no-repeat; --mb-bg: rgb(255 255 255 / 16%);
+  --dock-bg: rgb(255 255 255 / 26%); --dock-line: rgb(255 255 255 / 45%); --dock-sep: rgb(0 0 0 / 16%); --dock-run: rgb(0 0 0 / 60%); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sc-inner { --wall: #10173a url("/scene/wallpaper-dark.webp") center / cover no-repeat; --mb: rgb(255 255 255 / 92%); --mb-bg: rgb(0 0 0 / 14%);
+  --dock-bg: rgb(40 40 46 / 42%); --dock-line: rgb(255 255 255 / 16%); --dock-sep: rgb(255 255 255 / 22%); --dock-run: rgb(255 255 255 / 75%); } }
+html[data-theme="dark"] .sc-inner { --wall: #10173a url("/scene/wallpaper-dark.webp") center / cover no-repeat; --mb: rgb(255 255 255 / 92%); --mb-bg: rgb(0 0 0 / 14%);
+  --dock-bg: rgb(40 40 46 / 42%); --dock-line: rgb(255 255 255 / 16%); --dock-sep: rgb(255 255 255 / 22%); --dock-run: rgb(255 255 255 / 75%); }
+
+/* The Dock at the default 48 pt tile size: frosted glass, a separator before
+   the Trash, a dot under running apps. Homemade and Needs You sit next to each
+   other; hover shows their names like the real Dock. */
+.sc-dock { position: absolute; z-index: 4; inset-block-end: 6px; left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 2px; padding: 7px 8px;
+  border-radius: 24px; background: var(--dock-bg); -webkit-backdrop-filter: blur(28px) saturate(1.8); backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow: inset 0 0 0 1px var(--dock-line), 0 0 0 0.5px rgb(0 0 0 / 18%), 0 10px 30px rgb(0 0 0 / 18%); }
+.sc-dock-item { position: relative; display: block; inline-size: 48px; block-size: 48px; }
+.sc-dock-item > svg, .sc-dock-item > img { display: block; inline-size: 48px; block-size: 48px; filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 22%)); }
+.sc-dock-item > .sc-dock-hm { box-sizing: border-box; padding: 4.7px; }
+.sc-dock-run { position: absolute; inset-block-end: -5px; left: 50%; inline-size: 4px; block-size: 4px; margin-inline-start: -2px; border-radius: 50%; background: var(--dock-run); }
+.sc-dock-sep { align-self: stretch; inline-size: 1px; margin: 4px 7px; background: var(--dock-sep); }
+@media (hover: hover) {
+  .sc-dock-item::before { content: attr(data-name); position: absolute; inset-block-end: calc(100% + 16px); left: 50%; translate: -50% 4px; padding: 4px 11px; border-radius: 8px;
+    background: rgb(30 30 32 / 78%); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 18%);
+    color: #fff; font-size: 13px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s ease-out, translate 0.2s cubic-bezier(0.23, 1, 0.32, 1); }
+  .sc-dock-item:hover::before { opacity: 1; translate: -50% 0; }
+  .sc-dock-item > svg, .sc-dock-item > img { transition: translate 0.2s cubic-bezier(0.23, 1, 0.32, 1); }
+  .sc-dock-item:hover > svg, .sc-dock-item:hover > img { translate: 0 -4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-dock-item::before, .sc-dock-item > svg, .sc-dock-item > img { transition: opacity 0.15s; translate: none !important; }
+  .sc-dock-item:hover::before { translate: -50% 0 !important; }
+}
 
 /* Theme button in the header */
 .ny-theme-btn { display: inline-grid; place-items: center; inline-size: 34px; block-size: 34px; padding: 0; border-radius: 8px; border: 1px solid var(--btn2-line); background: var(--btn2); color: var(--fg); cursor: pointer; }
@@ -565,9 +595,17 @@ html[data-theme="light"] .ny-said q { background: #1d1d1f; box-shadow: 0 6px 20p
   .sc-claude .sc-term .box { display: none; }
   .sc-codex { inset: 196px 12px auto 52px; inline-size: auto; block-size: 284px; }
   .sc-codex .sc-term { position: absolute; inset: auto 0 0; padding: 0 16px 14px; font-size: 14px; white-space: pre-wrap; }
-  .sc-subs { inset: auto 16px 26px; }
+  .sc-subs { inset: auto 16px 100px; }
+  /* A touch bigger than the Mac's 48 pt so the icons read at phone size. */
+  .sc-dock { scale: 1.15; transform-origin: 50% 100%; }
   .sc-subs p { max-inline-size: 100%; padding: 10px 18px; border-radius: 14px; font-size: 24px; line-height: 1.25; text-wrap: balance; }
 }
+/* Phones get a portrait cut of the same wallpaper. */
+@media (max-width: 734px) {
+  .sc-inner { --wall: #8db8f2 url("/scene/wallpaper-light-portrait.webp") center / cover no-repeat; }
+  html[data-theme="dark"] .sc-inner { --wall: #10173a url("/scene/wallpaper-dark-portrait.webp") center / cover no-repeat; }
+}
+@media (max-width: 734px) and (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sc-inner { --wall: #10173a url("/scene/wallpaper-dark-portrait.webp") center / cover no-repeat; } }
 @media (max-width: 734px) and (prefers-reduced-motion: no-preference) {
   .sc-codex { transition: translate 0.5s cubic-bezier(0.23, 1, 0.32, 1); }
   .sc.codex-front .sc-codex { translate: 0 -24px; }
