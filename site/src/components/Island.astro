@@ -1,0 +1,65 @@
+---
+/**
+ * The app's island (the black pill that grows out of the notch), drawn in
+ * HTML. Every state has its own layer; the page script switches
+ * data-state and data-on. Text inside is made up.
+ */
+interface Props {
+  id?: string;
+  state?: "idle" | "wake" | "listening" | "thinking" | "sending" | "done" | "speaking" | "moon";
+  chat?: string;
+  line?: string;
+  target?: string;
+  note?: string;
+  hint?: string;
+}
+const { id, state = "idle", chat = "orchard-linter", line = "", target = "garden-planner", note = "Sent", hint = "Say your answer" } = Astro.props;
+const bars = (n: number) => Array.from({ length: n });
+const on = (s: string) => (s === state ? "" : undefined);
+---
+<div class="ny-island" id={id} data-state={state} aria-hidden="true">
+  <div class="ny-island-layer" data-layer="wake" data-on={on("wake")}>
+    <div class="ny-island-row"><span class="ny-orb"></span><span class="ny-bars small">{bars(5).map(() => <i />)}</span></div>
+  </div>
+  <div class="ny-island-layer" data-layer="thinking" data-on={on("thinking")}>
+    <div class="ny-island-row"><span class="ny-dots"><i /><i /><i /></span><span class="ny-island-label">Thinking</span></div>
+  </div>
+  <div class="ny-island-layer" data-layer="sending" data-on={on("sending")}>
+    <div class="ny-island-row">
+      <span class="ny-orb"></span>
+      <span style="display:flex;align-items:center;gap:8px;min-inline-size:0">
+        <span class="ny-island-label" data-slot="target">{target}</span>
+        <svg class="ny-ring" viewBox="0 0 18 18"><circle class="t" cx="9" cy="9" r="7" /><circle class="p" cx="9" cy="9" r="7" /></svg>
+      </span>
+    </div>
+  </div>
+  <div class="ny-island-layer" data-layer="done" data-on={on("done")}>
+    <div class="ny-island-row">
+      <span class="ny-orb"></span>
+      <span style="display:flex;align-items:center;gap:8px;min-inline-size:0">
+        <span class="ny-island-label" data-slot="note">{note}</span>
+        <svg class="ny-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-6.5" /></svg>
+      </span>
+    </div>
+  </div>
+  <div class="ny-island-layer" data-layer="moon" data-on={on("moon")}>
+    <div class="ny-island-row">
+      <svg width="14" height="14" viewBox="0 0 18 18" fill="#8e8e93"><path d="M15 10.6A6.6 6.6 0 0 1 7.4 3a6.6 6.6 0 1 0 7.6 7.6z" /></svg>
+      <span class="ny-island-label" style="color:#8e8e93">Do not disturb</span>
+    </div>
+  </div>
+  <div class="ny-island-layer" data-layer="listening" data-on={on("listening")}>
+    <div class="ny-island-row"><span class="ny-orb"></span><span class="ny-timer" data-slot="timer">0:02</span></div>
+    <div class="ny-island-body">
+      <div><strong>Listening</strong><small>{hint}</small></div>
+      <span class="ny-bars">{bars(18).map(() => <i />)}</span>
+    </div>
+  </div>
+  <div class="ny-island-layer" data-layer="speaking" data-on={on("speaking")}>
+    <div class="ny-island-row"><span class="ny-orb warm"></span><span class="ny-island-label" style="color:var(--ink-claude2)" data-slot="chat">{chat}</span></div>
+    <div class="ny-island-body">
+      <div><strong>Claude</strong><small class="warm" data-slot="line">{line}</small></div>
+      <span class="ny-bars warm">{bars(18).map(() => <i />)}</span>
+    </div>
+  </div>
+</div>

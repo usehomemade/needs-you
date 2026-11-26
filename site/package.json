@@ -1,0 +1,19 @@
+{
+  "name": "needs-you-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^5.16.0",
+    "@tailwindcss/vite": "^4.1.17",
+    "tailwindcss": "^4.1.17"
+  },
+  "packageManager": "pnpm@12.23.0",
+  "engines": {
+    "node": ">=22"
+  }
+}
