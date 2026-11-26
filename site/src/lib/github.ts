@@ -8,6 +8,7 @@ export const REPO = "usehomemade/needs-you";
 export const REPO_URL = `https://github.com/${REPO}`;
 export const RELEASES_URL = `${REPO_URL}/releases`;
 export const LATEST_URL = `${RELEASES_URL}/latest`;
+export const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
 
 export interface RepoStats {
   stars: number | null;

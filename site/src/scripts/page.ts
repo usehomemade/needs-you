@@ -1,33 +1,52 @@
+import { startScene } from "./scene";
 /* Page behaviour: theme switch, section reveal, copy buttons, live GitHub
-   numbers and the hero island demo. Everything works without it. */
+   numbers and the hero scene. Everything works without it. */
 
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Theme: system / light / dark, stored per browser.
+// Theme: follows the system until you pick one. The header button flips
+// light/dark; the footer switch also offers "system". Stored in localStorage,
+// or in window.name where storage is blocked (sandboxed previews).
 const KEY = "ny-theme";
-const themeButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-theme-choice]")];
-const showTheme = (choice: string) => {
-  for (const b of themeButtons) b.setAttribute("aria-pressed", String(b.dataset.themeChoice === choice));
+const root = document.documentElement;
+const dark = window.matchMedia("(prefers-color-scheme: dark)");
+const readChoice = () => {
+  let t: string | null = null;
+  try { t = localStorage.getItem(KEY); } catch {}
+  if (!t) t = /(?:^|;)ny-theme=(light|dark)/.exec(window.name || "")?.[1] ?? null;
+  return t === "light" || t === "dark" ? t : "system";
 };
-const applyTheme = (choice: string) => {
-  const d = document.documentElement;
-  if (choice === "system") {
-    delete d.dataset.theme;
-    d.style.colorScheme = "";
-  } else {
-    d.dataset.theme = choice;
-    d.style.colorScheme = choice;
-  }
+const saveChoice = (choice: string) => {
   try {
     if (choice === "system") localStorage.removeItem(KEY);
     else localStorage.setItem(KEY, choice);
   } catch {}
+  const rest = (window.name || "").split(";").filter((p) => p && !p.startsWith(KEY + "="));
+  if (choice !== "system") rest.push(KEY + "=" + choice);
+  try { window.name = rest.join(";"); } catch {}
+};
+const themeButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-theme-choice]")];
+const toggles = [...document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]")];
+const isDark = () => (root.dataset.theme ? root.dataset.theme === "dark" : dark.matches);
+const showTheme = (choice: string) => {
+  for (const b of themeButtons) b.setAttribute("aria-pressed", String(b.dataset.themeChoice === choice));
+  for (const b of toggles) b.setAttribute("aria-label", isDark() ? "Switch to light mode" : "Switch to dark mode");
+};
+const applyTheme = (choice: string) => {
+  if (choice === "system") {
+    delete root.dataset.theme;
+    root.style.colorScheme = "";
+  } else {
+    root.dataset.theme = choice;
+    root.style.colorScheme = choice;
+  }
+  saveChoice(choice);
   showTheme(choice);
 };
-try {
-  showTheme(localStorage.getItem(KEY) ?? "system");
-} catch {}
+showTheme(readChoice());
 for (const b of themeButtons) b.addEventListener("click", () => applyTheme(b.dataset.themeChoice ?? "system"));
+for (const b of toggles) b.addEventListener("click", () => applyTheme(isDark() ? "light" : "dark"));
+dark.addEventListener("change", () => showTheme(readChoice()));
 
 // Fade-in-up for sections below the fold, once.
 if (!reduced() && "IntersectionObserver" in window) {
@@ -104,8 +123,10 @@ const refresh = async () => {
   }
   if (typeof data.stars === "number") {
     for (const el of document.querySelectorAll<HTMLElement>('[data-stat="stars"]')) {
+      const icon = el.querySelector("svg");
       el.textContent = compact(data.stars);
-      el.hidden = data.stars === 0 && !el.closest("[data-stat-box]");
+      if (icon) el.prepend(icon);
+      el.hidden = false;
     }
   }
   if (data.version) setStat("version", data.version);
@@ -113,65 +134,6 @@ const refresh = async () => {
 };
 refresh().catch(() => {});
 
-// Hero island demo: a made-up "Hey Claude" message, then an agent's question.
-type Step = { state: string; ms: number; you?: string; claude?: string; slots?: Record<string, string>; show?: string };
-const STEPS: Step[] = [
-  { state: "idle", ms: 1400 },
-  { state: "wake", ms: 2300, you: "Hey Claude, garden planner: order the seeds for Friday." },
-  { state: "thinking", ms: 1100 },
-  { state: "sending", ms: 2000, slots: { target: "garden-planner" } },
-  { state: "done", ms: 1700, slots: { note: "Sent to garden-planner" }, show: "sent" },
-  { state: "idle", ms: 1300, show: "sent" },
-  { state: "speaking", ms: 3600, claude: "Tests pass on the branch. Shall I merge it?", show: "ask" },
-  { state: "listening", ms: 2400, you: "Yes, merge it.", show: "ask" },
-  { state: "done", ms: 2200, slots: { note: "Answered" }, show: "answered" },
-];
-
-const stage = document.querySelector<HTMLElement>("[data-demo]");
-if (stage) {
-  const island = stage.querySelector<HTMLElement>(".ny-island")!;
-  const youSub = stage.querySelector<HTMLElement>('[data-who="you"]')!;
-  const claudeSub = stage.querySelector<HTMLElement>('[data-who="claude"]')!;
-  const show = (step: Step) => {
-    island.dataset.state = step.state;
-    for (const [k, v] of Object.entries(step.slots ?? {})) {
-      const el = island.querySelector<HTMLElement>(`[data-slot="${k}"]`);
-      if (el) el.textContent = v;
-    }
-    for (const layer of island.querySelectorAll<HTMLElement>("[data-layer]")) {
-      layer.toggleAttribute("data-on", layer.dataset.layer === step.state);
-    }
-    youSub.textContent = step.you ?? "";
-    claudeSub.textContent = step.claude ?? "";
-    for (const el of stage.querySelectorAll<HTMLElement>("[data-when]")) {
-      const when = el.dataset.when!.split(" ");
-      const reached = STEPS.indexOf(step);
-      el.hidden = !when.some((w) => STEPS.slice(0, reached + 1).some((s) => s.show === w));
-    }
-  };
-  if (reduced()) {
-    // One still frame: the agent's question on screen.
-    show(STEPS[6]);
-  } else {
-    let i = 0;
-    let timer = 0;
-    let visible = true;
-    const tick = () => {
-      show(STEPS[i]);
-      timer = window.setTimeout(() => {
-        i = (i + 1) % STEPS.length;
-        if (visible && !document.hidden) tick();
-        else timer = 0;
-      }, STEPS[i].ms);
-    };
-    const resume = () => {
-      if (!timer && visible && !document.hidden) tick();
-    };
-    new IntersectionObserver(([e]) => {
-      visible = e.isIntersecting;
-      resume();
-    }).observe(stage);
-    document.addEventListener("visibilitychange", resume);
-    tick();
-  }
-}
+// Hero scene.
+const scene = document.querySelector<HTMLElement>("[data-scene]");
+if (scene) startScene(scene);

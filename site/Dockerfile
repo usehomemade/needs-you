@@ -7,6 +7,8 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
+ARG SITE_URL=https://needsyou.homemade.dev
+ENV SITE_URL=$SITE_URL
 ARG GITHUB_TOKEN
 ENV GITHUB_TOKEN=$GITHUB_TOKEN
 RUN pnpm build

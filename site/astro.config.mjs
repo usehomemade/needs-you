@@ -8,5 +8,7 @@ export default defineConfig({
   site: process.env.SITE_URL || undefined,
   output: "static",
   build: { inlineStylesheets: "auto" },
-  vite: { plugins: [tailwindcss()] },
+  // Scripts inline into the page (no module fetch), so the page also runs
+  // inside a sandboxed iframe with an opaque origin (preview hosting).
+  vite: { plugins: [tailwindcss()], build: { assetsInlineLimit: 100000 } },
 });
