@@ -136,7 +136,8 @@ enum Router {
             t.app = ChatApps.owner(c)?.id
             return t
         }
-        return regs.isEmpty ? [] : regs + appTargets()
+        // The chat apps are read off the screen by `voiceTargets`, off the main thread (HM-1418).
+        return regs
     }
 
     /// Registered chats first, then herdr chats that never connected (started before Claude Code
@@ -154,10 +155,13 @@ enum Router {
             let reg = await MainActor.run { registeredTargets() }
             if !reg.isEmpty {
                 let panes = await MainActor.run { Set(ChatRegistry.shared.reachable.compactMap { $0.pane?.id }) }
-                let unconnected = await targetsAll().filter { $0.kind == .herdrAgent && !panes.contains($0.id) }
+                let unconnected = await targetsAll(apps: false).filter { $0.kind == .herdrAgent && !panes.contains($0.id) }
                     .map { t -> ChatTarget in var t = t; t.focused = false; return t } // "in front" means used last, among connected chats
+                // Reading chat apps' windows can take seconds when one is busy: never on the main thread (HM-1418).
                 let apps = reg.filter { $0.kind == .desktop }
-                return reg.filter { $0.kind != .desktop } + unconnected + apps + appChatTargets(apps.filter(\.enabled))
+                let enabled = apps.filter(\.enabled)
+                let sidebar = await AXDelivery.offMain { appChatTargets(enabled) }
+                return reg.filter { $0.kind != .desktop } + unconnected + apps + sidebar
             }
         }
         return await targets(testOnly: testOnly, includeDisabled: true)
@@ -177,7 +181,7 @@ enum Router {
         return includeDisabled ? out : out.filter(\.enabled)
     }
 
-    private static func targetsAll() async -> [ChatTarget] {
+    private static func targetsAll(apps: Bool = true) async -> [ChatTarget] {
         var out: [ChatTarget] = []
         // Tab labels the user gave in herdr ("summer-trips") are names too.
         var labels: [String: String] = [:]
@@ -222,7 +226,7 @@ enum Router {
             t.app = ChatAppSwitches.muxID(.herdr)
             out.append(t)
         }
-        out += appTargets()
+        if apps { out += await AXDelivery.offMain { appTargets() } }
         return out
     }
 
@@ -581,7 +585,10 @@ enum Router {
 
     // MARK: Process
 
-    static func run(_ args: [String], checkExit: Bool = false, env extra: [String: String] = [:]) async throws -> String {
+    /// Runs a short command. Its output is read while it runs: read only at exit, a reply
+    /// bigger than the pipe (64 KB) would block it and this would never return (HM-1418).
+    /// A command still running after `timeout` seconds is stopped.
+    static func run(_ args: [String], checkExit: Bool = false, env extra: [String: String] = [:], timeout: Double = 15) async throws -> String {
         try await withCheckedThrowingContinuation { cont in
             let p = Process()
             p.executableURL = URL(fileURLWithPath: args[0])
@@ -594,15 +601,20 @@ enum Router {
             p.standardOutput = pipe
             p.standardError = pipe
             p.standardInput = FileHandle.nullDevice
-            p.terminationHandler = { proc in
-                let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                if checkExit && proc.terminationStatus != 0 {
+            do { try p.run() } catch { cont.resume(throwing: error); return }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+                if p.isRunning { Isolation.note("run: \((args[0] as NSString).lastPathComponent) \(args.dropFirst().prefix(2).joined(separator: " ")) still running after \(Int(timeout)) s, stopped"); p.terminate() }
+            }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                let out = String(data: data, encoding: .utf8) ?? ""
+                if checkExit && p.terminationStatus != 0 {
                     cont.resume(throwing: DeliveryError.failed("herdr failed: \(out.prefix(200))"))
                 } else {
                     cont.resume(returning: out)
                 }
             }
-            do { try p.run() } catch { cont.resume(throwing: error) }
         }
     }
 }

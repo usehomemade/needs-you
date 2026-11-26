@@ -293,6 +293,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        Watchdog.start() // HM-1418: logs where the main thread is when it stops answering
+        // Every Accessibility call waits at most 1 s for an app (the default is 6 s per call,
+        // so reading a hung app's window element by element could take hours). HM-1418
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
         Prefs.registerDefaults()
         AppPresence.registerDefaults()
         AppPresence.apply()

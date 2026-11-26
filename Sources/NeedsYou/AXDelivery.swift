@@ -29,7 +29,7 @@ enum AXDelivery {
         case notTyped(String)   // why, one line
     }
 
-    static let inputRoles: Set<String> = ["AXTextArea", "AXTextField"]
+    nonisolated static let inputRoles: Set<String> = ["AXTextArea", "AXTextField"]
     /// How long he must not have touched the keyboard or mouse before focus moves (HM-1374).
     static var idleNeeded: TimeInterval = 1.5
     static var idleMaxWait: TimeInterval = 20
@@ -91,16 +91,22 @@ enum AXDelivery {
         AXUIElementSetMessagingTimeout(axApp, 0.5)
         // A pane switch redraws the terminal a moment later.
         if muxRestore != nil { try? await Task.sleep(nanoseconds: 120_000_000) }
-        var places = scan(axApp)
+        // Off the main thread (HM-1418): a busy app (a terminal streaming its agent's output)
+        // answers each element slowly, and this read froze the whole app for minutes.
+        let appName = app.localizedName ?? "the app"
+        Watchdog.mark("ax: scan \(appName)")
+        var (places, slow) = await offMain { scanTimed(axApp) }
         var scores = places.map { AXMatch.score($0.place, t.hint) }
         // After a pane switch the terminal may still show the old pane for a moment.
-        for _ in 0..<6 where muxRestore != nil && AXMatch.pick(scores) == nil {
+        for _ in 0..<6 where muxRestore != nil && AXMatch.pick(scores) == nil && !slow {
             try? await Task.sleep(nanoseconds: 100_000_000)
-            places = scan(axApp)
+            (places, slow) = await offMain { scanTimed(axApp) }
             scores = places.map { AXMatch.score($0.place, t.hint) }
         }
+        if slow { log("\(appName) answered too slowly; read what it gave in \(ms(t0)) ms") }
         for (p, s) in zip(places, scores) { log(String(format: "candidate %.1f \"%@\"%@ %@", s.score, String(p.place.title.prefix(60)), p.tab != nil ? " (tab)" : "", s.why.joined(separator: ", "))) }
         guard let i = AXMatch.pick(scores, alone: muxRestore == nil) else {
+            Watchdog.mark("")
             await muxRestore?()
             return .notTyped(places.isEmpty ? "\(app.localizedName ?? "the app") shows no window" : "not sure which \(app.localizedName ?? "") window it is")
         }
@@ -117,6 +123,7 @@ enum AXDelivery {
         log("idle after \(ms(tIdle)) ms")
 
         // 3. What to put back afterwards.
+        Watchdog.mark("ax: focus \(appName)")
         let saved = Saved.take()
         defer { _ = saved }
 
@@ -133,6 +140,8 @@ enum AXDelivery {
         var window = place.window
         var front = false
         for n in 0..<120 {
+            // A hung app answers each check only at its timeout: give up rather than hold things up.
+            if Date().timeIntervalSince(tFocus) > 3 { log("still not in front after 3 s"); break }
             if n == 25 && NSWorkspace.shared.frontmostApplication?.processIdentifier != hostPid {
                 // A background app's first AXFrontmost does not always take (seen with a second Ghostty).
                 app.activate(options: [.activateAllWindows])
@@ -142,14 +151,17 @@ enum AXDelivery {
                 // Native window tabs (Terminal, Ghostty) can be one AXWindow each: after the press, the
                 // focused window is the one whose tab bar shows the pressed tab as selected.
                 if let tab = place.tab {
-                    if tabSelected(tab) || tabTitles(fw, selected: true).contains(place.place.title) { window = fw; front = true; break }
+                    if tabSelected(tab) { window = fw; front = true; break }
+                    let shown = await offMain { tabTitles(fw, selected: true) }
+                    if shown.contains(place.place.title) { window = fw; front = true; break }
                 } else if CFEqual(fw, place.window) { window = fw; front = true; break }
             }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
         // A CLI agent (it has a terminal) types into a terminal field; an app chat into its prompt.
         let terminalAgent = target.bundleID == nil && (target.pane != nil || target.pid.map(hasTTY) ?? true)
-        guard let input = chooseInput(inputs(window), terminal: terminalAgent) else {
+        let win = window
+        guard let input = await offMain({ chooseInput(inputs(win), terminal: terminalAgent) }) else {
             await undo(saved, previousTab, muxRestore, hostPid)
             return .notTyped("not sure which text field in \(app.localizedName ?? "the window") is the chat")
         }
@@ -206,6 +218,7 @@ enum AXDelivery {
             return .typed(app.localizedName ?? "the app")
         }
         await undo(saved, previousTab, muxRestore, hostPid)
+        Watchdog.mark("")
         log("restored to \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?") (was \(saved.app?.localizedName ?? "?")), total \(ms(t0)) ms")
         return .typed(app.localizedName ?? "the app")
     }
@@ -280,12 +293,26 @@ enum AXDelivery {
         var place: AXMatch.Place
     }
 
+    /// Runs blocking Accessibility reads on a background thread (HM-1418), so a slow or
+    /// hung app can never freeze Needs You. AX calls are safe off the main thread.
+    nonisolated static func offMain<T>(_ work: @escaping () -> T) async -> T {
+        await withCheckedContinuation { c in
+            DispatchQueue.global(qos: .userInitiated).async { c.resume(returning: work()) }
+        }
+    }
+
     /// Every window of the app, and each background tab as its own place.
-    static func scan(_ app: AXUIElement) -> [Found] {
+    nonisolated static func scan(_ app: AXUIElement) -> [Found] { scanTimed(app).places }
+
+    /// `slow`: the app did not answer within the time a read may take (busy or hung).
+    nonisolated static func scanTimed(_ app: AXUIElement, seconds: TimeInterval = 2.5) -> (places: [Found], slow: Bool) {
         var out: [Found] = []
+        var all = WalkBudget(nodes: 0, seconds: seconds)
         for w in (attr(app, kAXWindowsAttribute) as? [AXUIElement]) ?? [] {
             var tabs: [AXUIElement] = [], ins: [AXUIElement] = [], text: [String] = []
-            var budget = 5000
+            var budget = all.next(nodes: 5000)
+            defer { if budget.timedOut { all = budget } }
+            if all.timedOut { break }
             walk(w, budget: &budget) { e in
                 let r = role(e)
                 if isTab(e) { tabs.append(e) }
@@ -305,13 +332,13 @@ enum AXDelivery {
                 out.append(Found(window: w, tab: t, selectedTab: selected, input: nil, place: AXMatch.Place(title: title(t))))
             }
         }
-        return out
+        return (out, all.timedOut)
     }
 
     /// Titles of a window's tabs (only the selected one with `selected`).
-    static func tabTitles(_ w: AXUIElement, selected: Bool) -> [String] {
+    nonisolated static func tabTitles(_ w: AXUIElement, selected: Bool) -> [String] {
         var out: [String] = []
-        var budget = 3000
+        var budget = WalkBudget(nodes: 3000, seconds: 0.5)
         walk(w, budget: &budget) { e in
             if isTab(e), !selected || tabSelected(e) { out.append(title(e)) }
             return true
@@ -319,9 +346,9 @@ enum AXDelivery {
         return out
     }
 
-    static func inputs(_ w: AXUIElement) -> [AXUIElement] {
+    nonisolated static func inputs(_ w: AXUIElement) -> [AXUIElement] {
         var ins: [AXUIElement] = []
-        var budget = 5000
+        var budget = WalkBudget(nodes: 5000, seconds: 2)
         walk(w, budget: &budget) { e in
             if inputRoles.contains(role(e)) { ins.append(e) }
             return true
@@ -352,7 +379,7 @@ enum AXDelivery {
         let a = AXUIElementCreateApplication(app.processIdentifier)
         guard let w = element(a, kAXFocusedWindowAttribute) ?? (attr(a, kAXWindowsAttribute) as? [AXUIElement])?.first else { return false }
         var found = false
-        var budget = 400
+        var budget = WalkBudget(nodes: 400, seconds: 1)
         walk(w, budget: &budget) { e in
             if role(e) == "AXWebArea" {
                 let t = title(e)
@@ -417,7 +444,8 @@ enum AXDelivery {
         let appName = app.localizedName ?? ""
         var items: [AXItem] = [], elements: [AXUIElement] = [], open: String?
         var stack: [(AXUIElement, Int)] = [(window, 0)], seen = 0
-        while let (e, depth) = stack.popLast(), seen < 4000 {
+        var budget = WalkBudget(nodes: 4000, seconds: 2.5) // a busy app must not hold this up (HM-1418)
+        while let (e, depth) = stack.popLast(), budget.take() {
             seen += 1
             let r = role(e)
             if r == "AXWebArea", open == nil, let t = str(e, kAXTitleAttribute) { open = ChatListFinder.chatTitle(t, appName: appName) }
@@ -449,13 +477,13 @@ enum AXDelivery {
 
     /// Clicks a chat in the app's chat list and waits until it is the open one.
     static func openSidebarChat(_ bundle: String, title: String) async -> Bool {
-        if openChatTitle(bundle)?.caseInsensitiveCompare(title) == .orderedSame { return true }
+        if await offMain({ openChatTitle(bundle) })?.caseInsensitiveCompare(title) == .orderedSame { return true }
         NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first?.activate()
-        guard let row = scanApp(bundle)?.chats.first(where: { $0.title == title })?.element else { return false }
+        guard let row = await offMain({ scanApp(bundle) })?.chats.first(where: { $0.title == title })?.element else { return false }
         AXUIElementPerformAction(row, kAXPressAction as CFString)
         for _ in 0..<30 {
             try? await Task.sleep(for: .milliseconds(150))
-            if let now = openChatTitle(bundle), title.hasPrefix(now) || now.hasPrefix(title) {
+            if let now = await offMain({ openChatTitle(bundle) }), title.hasPrefix(now) || now.hasPrefix(title) {
                 try? await Task.sleep(for: .milliseconds(400)) // the message field comes in after the title
                 return true
             }
@@ -475,12 +503,12 @@ enum AXDelivery {
         return (v as! AXUIElement)
     }
     nonisolated static func role(_ e: AXUIElement) -> String { str(e, kAXRoleAttribute) ?? "?" }
-    static func title(_ e: AXUIElement) -> String {
+    nonisolated static func title(_ e: AXUIElement) -> String {
         if let t = str(e, kAXTitleAttribute), !t.isEmpty { return t }
         return str(e, kAXDescriptionAttribute) ?? ""
     }
     /// What a text field says about itself (web apps: its aria label and CSS classes).
-    static func label(_ e: AXUIElement) -> String {
+    nonisolated static func label(_ e: AXUIElement) -> String {
         let cls = (attr(e, "AXDOMClassList") as? [String])?.joined(separator: " ") ?? ""
         return [str(e, kAXDescriptionAttribute) ?? "", str(e, kAXTitleAttribute) ?? "", str(e, "AXPlaceholderValue") ?? "", cls].filter { !$0.isEmpty }.joined(separator: " ")
     }
@@ -489,7 +517,7 @@ enum AXDelivery {
     /// terminal panel, a chat app with a search box): a terminal agent needs the one that
     /// says it is a terminal; an app chat the one that says it is the prompt. Otherwise the
     /// focused one, but only if no other field also qualifies. Unsure: nil (nothing typed).
-    static func chooseInput(_ ins: [AXUIElement], terminal: Bool) -> AXUIElement? {
+    nonisolated static func chooseInput(_ ins: [AXUIElement], terminal: Bool) -> AXUIElement? {
         if ins.count <= 1 { return ins.first }
         let focused = ins.first { (attr($0, kAXFocusedAttribute) as? Bool) == true }
         let words = terminal ? ["terminal", "xterm", "shell"] : ["prompt", "message", "reply", "ask ", "composer"]
@@ -498,21 +526,20 @@ enum AXDelivery {
         if let f = focused, marked.contains(where: { CFEqual($0, f) }) { return f }
         return nil
     }
-    static func windowOf(_ e: AXUIElement) -> AXUIElement? { element(e, kAXWindowAttribute) }
-    static func isTab(_ e: AXUIElement) -> Bool {
+    nonisolated static func windowOf(_ e: AXUIElement) -> AXUIElement? { element(e, kAXWindowAttribute) }
+    nonisolated static func isTab(_ e: AXUIElement) -> Bool {
         let r = role(e), sr = str(e, kAXSubroleAttribute) ?? ""
         return (r == "AXRadioButton" && sr != "AXSortButton" && parentIsTabGroup(e)) || r == "AXTab" || sr == "AXTabButton"
     }
-    static func parentIsTabGroup(_ e: AXUIElement) -> Bool {
+    nonisolated static func parentIsTabGroup(_ e: AXUIElement) -> Bool {
         guard let p = element(e, kAXParentAttribute) else { return false }
         return role(p) == "AXTabGroup"
     }
-    static func tabSelected(_ e: AXUIElement) -> Bool {
+    nonisolated static func tabSelected(_ e: AXUIElement) -> Bool {
         (attr(e, kAXValueAttribute) as? Int) == 1 || (attr(e, kAXSelectedAttribute) as? Bool) == true
     }
-    static func walk(_ e: AXUIElement, depth: Int = 0, budget: inout Int, visit: (AXUIElement) -> Bool) {
-        guard budget > 0, depth <= 40 else { return }
-        budget -= 1
+    nonisolated static func walk(_ e: AXUIElement, depth: Int = 0, budget: inout WalkBudget, visit: (AXUIElement) -> Bool) {
+        guard depth <= 40, budget.take() else { return }
         guard visit(e) else { return }
         for c in (attr(e, kAXChildrenAttribute) as? [AXUIElement]) ?? [] { walk(c, depth: depth + 1, budget: &budget, visit: visit) }
     }
@@ -688,6 +715,10 @@ enum Mux {
         p.standardError = FileHandle.nullDevice
         p.standardInput = FileHandle.nullDevice
         do { try p.run() } catch { return nil }
+        // These run on the main thread: a hung herdr or tmux must not hold it (HM-1418).
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3) {
+            if p.isRunning { Isolation.note("mux: \((args[0] as NSString).lastPathComponent) \(args.dropFirst().prefix(2).joined(separator: " ")) took over 3 s, stopped"); p.terminate() }
+        }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         return p.terminationStatus == 0 ? String(data: data, encoding: .utf8) : nil

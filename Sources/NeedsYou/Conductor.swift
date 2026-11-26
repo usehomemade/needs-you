@@ -71,8 +71,16 @@ final class Conductor: ObservableObject {
     static let shared = Conductor()
 
     @Published private(set) var phase: Phase = .idle
-    @Published private(set) var level: Float = 0
-    @Published private(set) var hearingSpeech = false
+    /// The mic level while he answers lives in `MicLevel` (HM-1418): about 23 changes a
+    /// second here redrew every view that watches the Conductor (the history list, Settings).
+    private(set) var level: Float {
+        get { MicLevel.shared.level }
+        set { if MicLevel.shared.level != newValue { MicLevel.shared.level = newValue } }
+    }
+    private(set) var hearingSpeech: Bool {
+        get { MicLevel.shared.hearingSpeech }
+        set { if MicLevel.shared.hearingSpeech != newValue { MicLevel.shared.hearingSpeech = newValue } }
+    }
     @Published private(set) var current: Conversation?
     @Published private(set) var history: [Conversation] = []
     @Published private(set) var queued = 0

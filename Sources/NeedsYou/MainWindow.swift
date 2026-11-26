@@ -196,7 +196,7 @@ struct SidebarStatus: View {
             }
             .font(.callout)
             if conductor.phase == .listening {
-                LevelMeter(level: conductor.level, active: conductor.hearingSpeech)
+                LiveLevelMeter()
             }
             if conductor.queued > 0 {
                 Text("\(conductor.queued) more waiting").font(.caption).foregroundStyle(.secondary)
