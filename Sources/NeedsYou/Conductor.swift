@@ -23,6 +23,8 @@ struct Conversation: Identifiable, Codable, Hashable {
     var target: String?
     /// Hey Claude sends: how the chat was chosen (heard name, top matches, why). HM-1364.
     var route: String?
+    /// Which agent it came from or went to ("claude", "codex", "cursor", "claude-app", "chatgpt"), for its icon (HM-1384).
+    var agent: String?
 }
 
 enum Phase: Equatable {
@@ -503,13 +505,18 @@ final class Conductor: ObservableObject {
                 if let rest = Wake.afterWakeWord(text), let p = PresenceCommand.parse(rest) {
                     var r = Response(status: "dry_run"); r.state = "presence: \(p)"; return r
                 }
-                let targets = await Router.targets()
+                // Same targets and router as a live command (matcher, model, memory), nothing sent.
+                let targets = await Router.voiceTargets()
                 var r = Response(status: "dry_run")
-                switch Router.parse(text, targets: targets) {
+                let (parsed, log) = await Router.parseSmart(text, targets: targets)
+                r.turns = [Turn(role: .agent, text: "route: " + log),
+                           Turn(role: .agent, text: "targets: " + targets.map { $0.appChat.map { "[\($0)]" } ?? $0.title }.joined(separator: ", "))]
+                switch parsed {
                 case .send(let t, let m): r.state = t.title; r.transcript = m
                 case .choose(let o, let m, let h): r.status = "choose"; r.state = o.map(\.title).joined(separator: " | "); r.transcript = m; r.error = "heard name: \(h)"
                 case .nothing(let why): r.status = "nothing"; r.error = why
                 case .newChat(let name, let m): r.status = "new_chat"; r.state = name ?? "~"; r.transcript = m
+                case .app(let a, let m, let fresh): r.status = fresh ? "app_new_chat" : "app"; r.state = a.title; r.transcript = m
                 }
                 return r
             }
@@ -547,6 +554,7 @@ final class Conductor: ObservableObject {
         let message = req.text ?? ""
         var convo = Conversation(id: Self.newID(), title: Self.title(req.title, message), message: message,
                                  context: req.context, project: req.project, cwd: req.cwd, startedAt: Date())
+        convo.agent = Self.agentKind(req)
         current = convo
         lastError = nil
 
@@ -570,6 +578,7 @@ final class Conductor: ObservableObject {
                 return r
             }
             guard clientAlive() else { return finish(convo, status: "error") }
+            if escapedTwice { return toVoicemail(&convo, req) }
             if req.mute != true { Sounds.shared.play(.noAnswer) }
             convo.outcome = .noAnswer
             if req.once == true {
@@ -629,6 +638,7 @@ final class Conductor: ObservableObject {
                 if heard != text { r.transcriptVerbatim = heard }
                 return r
             }
+            if escapedTwice { return toVoicemail(&convo, req) }
             if req.mute != true { Sounds.shared.play(.noAnswer) }
             convo.outcome = .done
             return finish(convo, status: "no_answer")
@@ -649,6 +659,7 @@ final class Conductor: ObservableObject {
         var convo = Conversation(id: Self.newID(), title: Self.title(req.title, text), message: text,
                                  context: req.context, project: req.project, cwd: req.cwd, startedAt: Date())
         convo.turns.append(Turn(role: .agent, text: text))
+        convo.agent = Self.agentKind(req)
         current = convo
         lastError = nil
         do {
@@ -712,6 +723,24 @@ final class Conductor: ObservableObject {
 
     /// The turn shortcut while he answers an ask: ends his answer like "done".
     func endAnswer() { recorder?.stop() }
+
+    /// Escape while he answers (HM-1396): once = what he said is dropped and listening
+    /// starts over; twice (within half a second) = the question goes to voicemail
+    /// (a "which chat?" he started is cancelled instead).
+    enum AnswerEscape { case restart, voicemail }
+    private(set) var answering = false
+    private var answerEscape: AnswerEscape?
+    private var lastAnswerEscape = Date.distantPast
+    /// The last answer ended with Escape twice.
+    private var escapedTwice: Bool { answerEscape == .voicemail }
+
+    func escapeWhileAnswering() {
+        let twice = Date().timeIntervalSince(lastAnswerEscape) < 0.5
+        lastAnswerEscape = twice ? .distantPast : Date()
+        answerEscape = twice ? .voicemail : .restart
+        Isolation.note(twice ? "keys: Escape twice while he answers" : "keys: Escape, answer started over")
+        recorder?.stop()
+    }
 
     /// He pressed Escape during the last spoken turn.
     private var escaped: Bool { stoppedBy == .escape }
@@ -783,6 +812,7 @@ final class Conductor: ObservableObject {
             return r
         }
         let heard = try await listen(wait: req.waitSeconds ?? Prefs.waitSeconds, req) ?? ""
+        if escapedTwice { return toVoicemail(&convo, req) }
         let text = heard.isEmpty ? "" : await TranscriptCleaner.clean(heard)
         if !heard.isEmpty { convo.turns.append(Turn(role: .user, text: text, original: heard)) }
         convo.outcome = .answered
@@ -820,12 +850,19 @@ final class Conductor: ObservableObject {
             }
         }
         let cues = req.mute != true
+        answerEscape = nil
+        if cues && testFile == nil {
+            answering = true
+            Hotkeys.shared.escapeWhileListening(true)
+        }
+        defer { answering = false; Hotkeys.shared.escapeWhileListening(false) }
         if cues { await Sounds.shared.playAndWait(.listening) }
 
         // The wait applies until he starts talking. A filler-only turn ("ähm")
         // does not count: keep listening, with the wait starting over.
         var deadline = Date().addingTimeInterval(wait)
         while true {
+            if escapedTwice { return nil }
             let remaining = deadline.timeIntervalSinceNow
             if remaining <= 0.3 { return nil }
             phase = .listening
@@ -909,6 +946,15 @@ final class Conductor: ObservableObject {
             recorder = nil
             partials?.cancel()
             if live { Subtitles.shared.userStopped() }
+            if let e = answerEscape {
+                if let result { try? FileManager.default.removeItem(at: result.file.deletingLastPathComponent()) }
+                if e == .voicemail { return nil }
+                // Escape once: throw away what he said, listen again from the start.
+                answerEscape = nil
+                deadline = Date().addingTimeInterval(wait)
+                if cues { await Sounds.shared.playAndWait(.listening) }
+                continue
+            }
             guard let result else { return nil }
             defer { try? FileManager.default.removeItem(at: result.file.deletingLastPathComponent()) }
             if cues { Sounds.shared.play(.gotIt) } // no longer listening
@@ -946,6 +992,16 @@ final class Conductor: ObservableObject {
             convo.outcome = .done
             _ = self.finish(convo, status: "done")
         }
+    }
+
+    /// Escape twice while he answers: the question waits as a voicemail (HM-1396).
+    private func toVoicemail(_ convo: inout Conversation, _ req: Request) -> Response {
+        if req.mute != true { Sounds.shared.play(.cancelled) }
+        convo.outcome = .noAnswer
+        DoNotDisturb.shared.store(req, kind: .noAnswer, conversationID: convo.id)
+        var r = finish(convo, status: "voicemail")
+        r.state = "\(UserName.ForAgents) pressed Escape twice: your question is kept as a voicemail. They hear it later: go on with other work and do not ask again."
+        return r
     }
 
     private func finish(_ convo: Conversation, status: String) -> Response {
@@ -1029,11 +1085,21 @@ final class Conductor: ObservableObject {
             // own question for his answer.
             if req.mute != true { try? await Task.sleep(nanoseconds: 350_000_000) }
             let heard = try await listen(wait: Prefs.waitSeconds, req)
+            if escapedTwice { clarifyEscaped = true; return nil } // his own command: Escape twice cancels it
             Isolation.note("clarify: heard \u{201C}\(heard ?? "")\u{201D}")
             return numberPick == nil ? heard : nil
         } catch {
             return nil
         }
+    }
+
+    /// The agent that asked: its connected chat in the same folder, else what its environment says.
+    static func agentKind(_ req: Request) -> String? {
+        if let cwd = req.cwd, !cwd.isEmpty,
+           let c = ChatRegistry.shared.chats.values.filter({ AXMatch.path($0.cwd) == AXMatch.path(cwd) }).max(by: { $0.lastActivity < $1.lastActivity }),
+           !c.agent.isEmpty, c.agent != "unknown" { return c.agent }
+        if req.env?["CLAUDECODE"] == "1" { return "claude" }
+        return nil
     }
 
     /// Router announcements ("Started a new chat in orchard"): part of the user's turn too.

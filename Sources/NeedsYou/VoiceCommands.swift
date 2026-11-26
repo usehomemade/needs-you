@@ -12,7 +12,10 @@ final class VoiceCommands: ObservableObject {
     @Published private(set) var status = "Off"
     /// True while the mic is open for the wake word (menu bar dot).
     @Published private(set) var armed = false
-    @Published private(set) var capturing = false
+    @Published private(set) var capturing = false {
+        didSet { if capturing != oldValue { Hotkeys.shared.escapeWhileCapturing(capturing) } }
+    }
+    private var lastEscape = Date.distantPast
     @Published var enabled: Bool = UserDefaults.standard.bool(forKey: "wakeEnabled") {
         didSet {
             UserDefaults.standard.set(enabled, forKey: "wakeEnabled")
@@ -451,11 +454,21 @@ final class VoiceCommands: ObservableObject {
             // No chat named and no explicit "new chat": a live test goes to the armed pane too.
             case .newChat(nil, let m) where Router.testRoot == nil: parsed = .send(targets[0], m)
             case .nothing, .newChat: break
+            // Tests never open or type into a real chat app.
+            case .app: parsed = .nothing("Tests never open chat apps.")
             }
         }
 
         if case .choose(let options, let text, let heard) = parsed {
-            if options.isEmpty { parsed = .nothing("No chats found.") }
+            if options.isEmpty {
+                // He named something no chat matches (HM-1383): say so, never send it elsewhere.
+                let why = heard.isEmpty ? "No chats are open that I can reach." : "I can't find a chat called \(heard)."
+                if !dryRun && !testOnly {
+                    Sounds.shared.play(.cancelled)
+                    await Conductor.shared.speakOnly(why + (heard.isEmpty ? " Connect one in Settings, Agents." : " Connect it in Settings, Agents, or say new chat in \(heard)."))
+                }
+                return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: why)
+            }
             else {
                 let (pick, escaped) = await askWhichChat(options, heardName: heard)
                 if let pick {
@@ -487,6 +500,8 @@ final class VoiceCommands: ObservableObject {
             return errorResponse("unreachable")
         case .newChat(let heardProject, let heardText):
             return await newChat(project: heardProject, heardText: heardText, transcript: transcript, dryRun: dryRun, testOnly: testOnly)
+        case .app(let app, let heardText, let fresh):
+            return await appChat(app, heardText: heardText, newChat: fresh, transcript: transcript, dryRun: dryRun)
         case .send(let target, let heardText):
             let text = await TranscriptCleaner.clean(heardText)
             if dryRun {
@@ -498,9 +513,11 @@ final class VoiceCommands: ObservableObject {
                 Sounds.shared.play(.cancelled)
                 return record(target, text: text, transcript: transcript, outcome: .cancelled, error: nil)
             }
-            let delivered = text + "\n" + Router.voiceSuffix
+            // A chat app without Needs You can't answer out loud: no voice line, and it stays in front.
+            let quietApp = target.kind == .desktop && !Router.appHasNeedsYou(target.id)
+            let delivered = quietApp ? text : text + "\n" + Router.voiceSuffix
             do {
-                let how = try await Router.deliver(delivered, to: target)
+                let how = try await Router.deliver(delivered, to: target, stayInFront: quietApp)
                 Sounds.shared.play(.sent)
                 if let name = Self.heardName(routeLog) {
                     RoutingMemoryStore.shared.remember(words: RoutingMemory.words(rest: name), target: target, source: "sent")
@@ -626,6 +643,58 @@ final class VoiceCommands: ObservableObject {
         }
     }
 
+    /// "Hey Claude, new chat on Claude desktop, ask ..." / "use ChatGPT to ask ..." (HM-1383).
+    private func appChat(_ app: Router.ChatApp, heardText: String, newChat: Bool, transcript: String, dryRun: Bool) async -> Response {
+        let text = await TranscriptCleaner.clean(heardText)
+        let label = newChat ? "New chat in \(app.title)" : app.title
+        if dryRun {
+            var r = Response(status: "dry_run"); r.state = label; r.transcript = text; return r
+        }
+        Sounds.shared.play(.sending)
+        guard await countDown(to: label) else {
+            Sounds.shared.play(.cancelled)
+            return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: nil)
+        }
+        let voice = Router.appHasNeedsYou(app.bundle)
+        let delivered = voice ? text + "\n" + Router.voiceSuffix : text
+        do {
+            let target = newChat
+                ? try await Router.startAppChat(app)
+                : ChatTarget(kind: .desktop, id: app.bundle, title: app.title, aliases: app.aliases, focused: false)
+            try await Router.deliver(delivered, to: target, stayInFront: !voice)
+            Sounds.shared.play(.sent)
+            var t = target; t.title = label
+            return record(t, text: delivered, transcript: transcript, outcome: .sent, error: nil)
+        } catch {
+            Sounds.shared.play(.cancelled)
+            Island.shared.error("Not sent", Island.oneLine(error.localizedDescription))
+            return record(nil, text: text, transcript: transcript, outcome: .error, error: error.localizedDescription)
+        }
+    }
+
+    /// Escape while he says a command he started (HM-1396): once = start over,
+    /// twice (within half a second) = cancel, nothing sent.
+    func escapeWhileCapturing() {
+        let twice = Date().timeIntervalSince(lastEscape) < 0.5
+        lastEscape = twice ? .distantPast : Date()
+        Subtitles.shared.userStopped()
+        if twice {
+            listener.cancelCommand(); phoneListener.cancelCommand()
+            firstTake = nil
+            capturing = false
+            Island.shared.idle()
+            Sounds.shared.play(.cancelled)
+            if oneShot { oneShot = false }
+            refresh()
+            Isolation.note("keys: Escape twice, command cancelled")
+        } else {
+            listener.restartCommand(); phoneListener.restartCommand()
+            Sounds.shared.play(.listening)
+            Subtitles.shared.userBegan(source: "mac")
+            Isolation.note("keys: Escape, command started over")
+        }
+    }
+
     /// Escape during the countdown (Hotkeys): true if a send was waiting.
     func cancelPendingSend() -> Bool {
         guard let countdown else { return false }
@@ -658,6 +727,15 @@ final class VoiceCommands: ObservableObject {
         c.kind = "send"
         c.target = target?.title
         c.route = routeNote
+        if let t = target {
+            switch t.kind {
+            case .registered:
+                if let chat = ChatRegistry.shared.chats[t.id] { c.agent = chat.agent; if !chat.cwd.isEmpty { c.cwd = chat.cwd } }
+            case .desktop: c.agent = t.id == Router.desktopBundleID ? "claude-app" : t.id.hasPrefix("com.openai.") ? "chatgpt" : nil
+            case .herdrAgent: c.agent = "claude"
+            case .herdrPane: break
+            }
+        }
         c.turns = [Turn(role: .user, text: text.isEmpty ? transcript : text, original: transcript)]
         c.outcome = outcome
         c.error = error

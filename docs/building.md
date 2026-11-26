@@ -14,6 +14,10 @@ SwiftPM writes SDK 14.0 into the binaries, which keeps AppKit in the macOS 14 lo
 
 The app icon is in `Resources/AppIcon/` (regenerate with `render.py`). `install.sh` compiles the `.icon` with actool and falls back to the `.icns`.
 
+## Router Debug (local builds only)
+
+Window, Router Debug (⌥⌘D) lists every target the router sees right now (connected chats, herdr chats that never connected, chat apps) and has a playground: type a command and it shows the matcher, topic, on-device model, routing memory and the result, without sending anything. Release builds (they carry an update feed) have neither the menu item nor the window.
+
 ## UI demos
 
 `NeedsYou --ui-demo main|settings|training|menu` opens a window with no socket, mic or audio, so you can screenshot it. `--island-demo` steps the status island through every state.

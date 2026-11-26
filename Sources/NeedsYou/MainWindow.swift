@@ -2,6 +2,68 @@ import AppKit
 import NeedsYouShared
 import SwiftUI
 
+// MARK: - Agent icons (HM-1384)
+
+/// The app whose icon stands for an agent: Claude Code and the Claude app show Claude's,
+/// Codex and ChatGPT the ChatGPT app's, Cursor its own.
+enum AgentApp {
+    static func bundle(_ agent: String?) -> String? {
+        switch agent {
+        case "claude", "claude-app": return Router.desktopBundleID
+        case "codex", "chatgpt": return "com.openai.codex"
+        case "cursor": return "com.todesktop.230313mzl4w4u92"
+        default: return nil
+        }
+    }
+
+    static func name(_ agent: String?) -> String? {
+        switch agent {
+        case "claude": return "Claude Code"
+        case "claude-app": return "Claude app"
+        case "codex": return "Codex"
+        case "chatgpt": return "ChatGPT"
+        case "cursor": return "Cursor"
+        default: return nil
+        }
+    }
+
+    static func icon(bundle: String?) -> NSImage? {
+        guard let b = bundle else { return nil }
+        if let running = NSRunningApplication.runningApplications(withBundleIdentifier: b).first, let i = running.icon { return i }
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) else { return nil }
+        return NSWorkspace.shared.icon(forFile: url.path)
+    }
+}
+
+/// An agent's app icon at list size; a symbol on a quiet tile when no app stands for it.
+/// `badge`: the app showing the chat (Ghostty, Terminal, Cursor), small in the corner.
+struct AgentAvatar: View {
+    var image: NSImage?
+    var symbol: String
+    var badge: NSImage? = nil
+    var size: CGFloat = 28
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image).resizable().interpolation(.high)
+            } else {
+                RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+                    .fill(.quaternary)
+                    .overlay(Image(systemName: symbol).font(.system(size: size * 0.45)).foregroundStyle(.secondary))
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay(alignment: .bottomTrailing) {
+            if let badge {
+                Image(nsImage: badge).resizable().frame(width: size * 0.55, height: size * 0.55)
+                    .offset(x: size * 0.15, y: size * 0.15)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Main window (HM-1356)
 
 /// Sidebar (Conversations, Voicemails, one row per project), a list, and the
@@ -36,7 +98,9 @@ struct MainView: View {
                     ContentUnavailableView("No Voicemail Selected", systemImage: "recordingtape")
                 }
             case .chats:
-                if let c = ChatRegistry.shared.chats[nav.chat ?? ""] {
+                if let id = nav.chat, id.hasPrefix("app:"), let app = Router.installedApps().first(where: { "app:" + $0.bundle == id }) {
+                    ChatAppDetail(app: app)
+                } else if let c = ChatRegistry.shared.chats[nav.chat ?? ""] {
                     ChatDetail(chat: c)
                 } else {
                     ContentUnavailableView("No Chat Selected", systemImage: "terminal")
@@ -85,8 +149,10 @@ struct Sidebar: View {
             }
             if !projects.isEmpty {
                 Section("Projects") {
-                    ForEach(projects, id: \.self) { p in
-                        Label(p, systemImage: "folder").tag(Nav.Section.project(p))
+                    ForEach(projects, id: \.name) { p in
+                        Label(p.name, systemImage: "folder")
+                            .badge(p.count)
+                            .tag(Nav.Section.project(p.name))
                     }
                 }
             }
@@ -95,11 +161,19 @@ struct Sidebar: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { SidebarStatus() }
     }
 
-    /// The ten chats and projects heard from most recently.
-    private var projects: [String] {
-        var seen = Set<String>(), out: [String] = []
-        for c in conductor.history where c.kind != "voicemail" && seen.insert(c.source).inserted { out.append(c.source) }
-        return Array(out.prefix(10))
+    /// The ten project folders heard from most recently, with how many conversations each has.
+    /// Only real folders: a chat's title or the home folder is never a project (HM-1384).
+    private var projects: [(name: String, count: Int)] {
+        var order: [String] = [], count: [String: Int] = [:], shown: [String: String] = [:]
+        for c in conductor.history where c.kind != "voicemail" {
+            guard let f = c.folder else { continue }
+            let k = Conversation.folderKey(f)
+            if count[k] == nil { order.append(k) }
+            // The real folder name ("needs-you") wins over a --project label ("Needs You").
+            if shown[k] == nil || c.cwd != nil && shown[k] != f && !(shown[k] ?? "").contains("-") { shown[k] = f }
+            count[k, default: 0] += 1
+        }
+        return order.prefix(10).map { (shown[$0] ?? $0, count[$0] ?? 0) }
     }
 }
 
@@ -149,15 +223,28 @@ struct ChatList: View {
         let chats = registry.reachable.filter { c in
             search.isEmpty || [c.displayName, c.agentName, c.summary, c.cwd].contains { $0.localizedCaseInsensitiveContains(search) }
         }
-        if chats.isEmpty {
-            ContentUnavailableView(search.isEmpty ? "No Chats Connected" : "No Results",
-                                   systemImage: "terminal",
-                                   description: Text(search.isEmpty ? "Turn on an agent in Settings \u{2192} Agents \u{2192} Reach by Voice. New chats show up here." : ""))
-        } else {
-            List(chats, id: \.id, selection: $nav.chat) { c in
-                ChatRow(chat: c, queued: registry.queuedCount(c.id)).tag(c.id)
+        let apps = Router.installedApps().filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+        List(selection: $nav.chat) {
+            Section("Connected Chats") {
+                ForEach(chats, id: \.id) { c in
+                    ChatRow(chat: c, queued: registry.queuedCount(c.id)).tag(c.id)
+                        .contextMenu { Button("Show Chat") { Task { await Router.reveal(c) } } }
+                }
+                if chats.isEmpty {
+                    Text(search.isEmpty ? "None yet. Turn on an agent in Settings \u{2192} Agents; new chats show up here." : "No results")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if !apps.isEmpty {
+                Section("Chat Apps") {
+                    ForEach(apps, id: \.bundle) { a in
+                        ChatAppRow(app: a).tag("app:" + a.bundle)
+                    }
+                }
             }
         }
+        .navigationTitle("Chats")
+        .navigationSubtitle(chats.isEmpty ? "" : "\(chats.count) connected")
     }
 }
 
@@ -166,16 +253,91 @@ struct ChatRow: View {
     let queued: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(chat.displayName).font(.headline).lineLimit(1)
-                Spacer()
-                Text(chat.lastActivity, style: .relative).font(.caption).foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 10) {
+            AgentAvatar(image: AgentApp.icon(bundle: AgentApp.bundle(chat.agent)), symbol: "terminal",
+                        badge: ChatDetail.host(chat)?.icon)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(chat.displayName).font(.headline).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(chat.lastActivity, style: .relative).font(.caption).foregroundStyle(.secondary)
+                }
+                Text(ChatDetail.stateLine(chat, queued: queued)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                if let p = chat.prompts.last { Text(p).font(.callout).foregroundStyle(.secondary).lineLimit(2) }
             }
-            Text(ChatDetail.stateLine(chat, queued: queued)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-            if let p = chat.prompts.last { Text(p).font(.callout).foregroundStyle(.secondary).lineLimit(2) }
+            Button { Task { await Router.reveal(chat) } } label: { Image(systemName: "arrow.up.forward.app") }
+                .buttonStyle(.borderless)
+                .help("Show Chat")
+                .accessibilityLabel("Show Chat")
         }
         .padding(.vertical, 3)
+    }
+}
+
+/// A chat app (Claude, ChatGPT) in the Chats list: reached by name, opened from here.
+struct ChatAppRow: View {
+    let app: Router.ChatApp
+
+    var body: some View {
+        HStack(spacing: 10) {
+            AgentAvatar(image: AgentApp.icon(bundle: app.bundle), symbol: "app")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(app.title).font(.headline)
+                Text(ChatAppDetail.stateLine(app)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Button { ChatAppDetail.open(app) } label: { Image(systemName: "arrow.up.forward.app") }
+                .buttonStyle(.borderless)
+                .help("Open \(app.title)")
+                .accessibilityLabel("Open \(app.title)")
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+struct ChatAppDetail: View {
+    let app: Router.ChatApp
+
+    static func running(_ app: Router.ChatApp) -> NSRunningApplication? {
+        NSRunningApplication.runningApplications(withBundleIdentifier: app.bundle).first
+    }
+
+    static func stateLine(_ app: Router.ChatApp) -> String {
+        (running(app) == nil ? "Not running" : "Running") + " \u{00B7} " + (Router.appHasNeedsYou(app.bundle) ? "answers out loud" : "typed into, answers on screen")
+    }
+
+    static func open(_ app: Router.ChatApp) {
+        if let r = running(app) { r.activate(options: [.activateAllWindows]); return }
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundle) {
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 12) {
+                    AgentAvatar(image: AgentApp.icon(bundle: app.bundle), symbol: "app", size: 48)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(app.title).font(.title2.weight(.semibold))
+                        Text(Self.stateLine(app)).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            Section {
+                LabeledContent("Say", value: "\u{201C}\(Wake.phrase), use \(app.title) to ask \u{2026}\u{201D}")
+                LabeledContent("Or", value: "\u{201C}\(Wake.phrase), \(app.title): \u{2026}\u{201D} for the chat open there")
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(app.title)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { Self.open(app) } label: { Label("Open \(app.title)", systemImage: "arrow.up.forward.app") }
+                    .help("Open \(app.title)")
+            }
+        }
     }
 }
 
@@ -195,10 +357,25 @@ struct ChatDetail: View {
         return s
     }
 
+    /// The app that shows the chat (the terminal, or Cursor).
+    static func host(_ c: ChatInfo) -> NSRunningApplication? { AXDelivery.guiApp(c.agentPid) }
+
     var body: some View {
         Form {
             Section {
+                HStack(spacing: 12) {
+                    AgentAvatar(image: AgentApp.icon(bundle: AgentApp.bundle(chat.agent)), symbol: "terminal",
+                                badge: Self.host(chat)?.icon, size: 48)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(chat.displayName).font(.title2.weight(.semibold)).lineLimit(2)
+                        Text(Self.stateLine(chat, queued: registry.queuedCount(chat.id))).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            Section {
                 LabeledContent("Agent", value: chat.agentName)
+                if let h = Self.host(chat) { LabeledContent("Shown in", value: h.localizedName ?? "") }
                 LabeledContent("Folder", value: chat.cwd.isEmpty ? "Unknown" : (chat.cwd as NSString).abbreviatingWithTildeInPath)
                 LabeledContent("State", value: Self.stateLine(chat, queued: 0))
                 LabeledContent("Connected", value: chat.hasHooks ? "MCP and hooks" : "MCP")
@@ -221,6 +398,12 @@ struct ChatDetail: View {
         }
         .formStyle(.grouped)
         .navigationTitle(chat.displayName)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { Task { await Router.reveal(chat) } } label: { Label("Show Chat", systemImage: "arrow.up.forward.app") }
+                    .help("Bring this chat's window to the front")
+            }
+        }
     }
 }
 
@@ -267,7 +450,7 @@ struct ConversationList: View {
     }
 
     private func matches(_ c: Conversation) -> Bool {
-        if let project, c.source != project { return false }
+        if let project, c.folder.map(Conversation.folderKey) != Conversation.folderKey(project) { return false }
         if project == nil, c.kind == "voicemail" { return false } // the Voicemails list has those
         guard !search.isEmpty else { return true }
         let q = search
@@ -295,23 +478,40 @@ struct ConversationRow: View {
     var live = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(convo.title).font(.headline).lineLimit(1)
-                Spacer(minLength: 8)
-                Text(convo.startedAt, format: .dateTime.hour().minute())
-                    .font(.callout).foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 10) {
+            AgentAvatar(image: AgentApp.icon(bundle: AgentApp.bundle(convo.agent)),
+                        symbol: convo.kind == "send" ? "waveform" : "bubble.left")
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(convo.sender).font(.headline).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(convo.startedAt, format: .dateTime.hour().minute())
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                if let t = distinctTitle {
+                    Text(t).font(.subheadline.weight(.medium)).lineLimit(1)
+                }
+                Text(snippet).lineLimit(2).foregroundStyle(.secondary)
+                Text(live ? "Now" : convo.outcomeText)
+                    .font(.caption)
+                    .foregroundStyle(outcomeColor)
             }
-            Text(snippet).lineLimit(2).foregroundStyle(.secondary)
-            HStack(spacing: 4) {
-                Text(convo.source)
-                Text("·")
-                Text(live ? "Now" : convo.outcomeText).foregroundStyle(outcomeColor)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 3)
+    }
+
+    /// The title, only when it says something the sender and the preview don't (HM-1384):
+    /// most titles are the message's first words, cut off.
+    private var distinctTitle: String? {
+        let squash: (String) -> String = { $0.lowercased().filter { $0.isLetter || $0.isNumber } }
+        var t = convo.title.trimmingCharacters(in: .whitespaces)
+        while t.hasSuffix("\u{2026}") || t.hasSuffix(".") { t.removeLast() }
+        let st = squash(t), body = squash(snippet.replacingOccurrences(of: "You: ", with: "")), who = squash(convo.sender)
+        if st.isEmpty || st == "heyclaude" || st == who || st == "to" + who { return nil }
+        if convo.kind == "send", t.hasPrefix("To ") { return nil }
+        if body.hasPrefix(st) || st.hasPrefix(body) { return nil }
+        if squash(convo.message).hasPrefix(st) && body.hasPrefix(squash(convo.message).prefix(20)) { return nil }
+        return convo.title
     }
 
     private var snippet: String {

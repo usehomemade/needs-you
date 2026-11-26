@@ -102,6 +102,9 @@ struct AppCommands: Commands {
         CommandGroup(before: .windowList) {
             Button("Needs You") { Nav.open("main") }.keyboardShortcut("0")
             Button("Training") { Nav.open("training") }.keyboardShortcut("t", modifiers: [.command, .option])
+            if DebugView.available {
+                Button("Router Debug") { Nav.open("debug") }.keyboardShortcut("d", modifiers: [.command, .option])
+            }
             Divider()
         }
         CommandGroup(replacing: .help) {
@@ -191,6 +194,23 @@ extension Conversation {
         if kind == "send", let target { return target }
         if let cwd, let last = cwd.split(separator: "/").last, cwd != NSHomeDirectory() { return String(last) }
         return project ?? "Agent"
+    }
+
+    /// The project folder it belongs to (nil: the home folder or unknown). Chat titles are never projects (HM-1384).
+    var folder: String? {
+        if let cwd, !cwd.isEmpty, cwd != NSHomeDirectory(), let last = cwd.split(separator: "/").last { return String(last) }
+        if kind != "send", let project, !project.isEmpty { return project }
+        return nil
+    }
+
+    /// "Needs You", "needs-you" and "needs_you" are one project.
+    static func folderKey(_ f: String) -> String { f.lowercased().filter { $0.isLetter || $0.isNumber } }
+
+    /// What the list shows as the sender: the folder, else the chat or agent.
+    var sender: String {
+        if let folder { return folder }
+        if kind == "send" { return target ?? "Hey Claude" }
+        return AgentApp.name(agent).map { "\($0) in your home folder" } ?? "Home folder"
     }
 
     var outcomeText: String {

@@ -120,17 +120,27 @@ struct NeedsYouApp: App {
                 .frame(minWidth: 760, minHeight: 460)
         }
         .defaultSize(width: 980, height: 620)
+        // Listed once, by AppCommands with its shortcut; SwiftUI would list every Window again.
+        .commandsRemoved()
         .commands { AppCommands() }
 
         Window("Welcome to Needs You", id: "name") {
             UserNamePrompt()
         }
         .windowResizability(.contentSize)
+        .commandsRemoved()
 
         Window("Training", id: "training") {
             TrainingView()
         }
         .defaultSize(width: 680, height: 720)
+        .commandsRemoved()
+
+        Window("Router Debug", id: "debug") {
+            DebugView()
+        }
+        .defaultSize(width: 820, height: 680)
+        .commandsRemoved()
 
         Settings {
             SettingsView().environmentObject(conductor)
@@ -290,6 +300,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Cues in memory before the first wake (HM-1344: the chime is latency-critical).
         DispatchQueue.global(qos: .userInitiated).async { Sounds.shared.preload() }
         AgentsStore.shared.sync()
+        AgentConnect.shared.refreshClaudeHooks()
+        AppDiscovery.start()
         PermissionVoice.shared.sync() // HM-1369: only acts when turned on in Settings → Agents
         do {
             try Server.shared.start()

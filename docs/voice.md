@@ -7,6 +7,8 @@ Turn on "Listen for Hey Claude" in the menu bar or in Settings. Then say:
 - "Hey Claude, this one: run the tests again" goes to the chat in front.
 - "Hey Claude, trip planner: book the hotel for Friday" goes to the chat whose title, folder or terminal tab matches.
 - "Hey Claude, new chat in website: look at the failing deploy" opens a new terminal tab in the closest folder under `~/Projects` and starts `claude` with your message.
+- "Hey Claude, new chat on Claude desktop, ask what the weather is like" or "Hey Claude, use ChatGPT to ask how my business is doing" opens the app (if needed), starts a new chat there with its New Chat menu item and types the question. An app without the Needs You MCP server can't answer out loud, so the voice line is left off and the app stays in front.
+- "Hey Claude, how is the orchard linter going" names no chat: the on-device model picks one by topic. It sends without asking when the model's pick shares the most words with the message (folder, tab, title, what the chat works on); otherwise it asks which chat.
 
 If the chat is idle (its turn has ended), the message is typed into it, in whatever app shows it (see below). If it is busy, or a check fails, the message waits in that chat's inbox and arrives on its next tool call, turn end or prompt. For 2 seconds before it is sent, the island shows the chat it goes to. Esc or saying "cancel" stops it. Every message ends with a line telling the agent it came by voice, so it answers out loud.
 
@@ -46,6 +48,8 @@ Default Option+Shift+Space, changeable in Settings, Hey Claude. It does the same
 ## Interrupting
 
 Say "Stop, Claude" while it speaks, or press Escape. See [Agents](agents.md#interrupting) for what the agent receives.
+
+While you talk, press Escape to throw away what you said and start over. Press it twice quickly to stop: a command you started ("Hey Claude, …") is cancelled and nothing is sent; an agent's question is kept as a voicemail.
 
 ## Do not disturb
 

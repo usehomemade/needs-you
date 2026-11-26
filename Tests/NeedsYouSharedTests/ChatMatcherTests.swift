@@ -99,8 +99,10 @@ final class RouteJudgeTests: XCTestCase {
     func testNamedStays() {
         if case .named(2, _) = RouteJudge.decide(.named(2, "hi"), model: 0).0 {} else { XCTFail() }
     }
-    func testFrontAgreementSends() {
-        if case .front(1, _) = RouteJudge.decide(.front(1, "hi"), model: 1).0 {} else { XCTFail() }
+    /// The chat used last is never a fallback: no name and no clear topic asks.
+    func testNoNameNoTopicAsks() {
+        guard case .choose(let idx, _, _) = RouteJudge.decide(.front(1, "hi"), model: 1).0 else { return XCTFail() }
+        XCTAssertEqual(idx, [1])
     }
     func testFrontDisagreementAsksModelFirst() {
         guard case .choose(let idx, _, _) = RouteJudge.decide(.front(1, "hi"), model: 3).0 else { return XCTFail() }
@@ -109,8 +111,9 @@ final class RouteJudgeTests: XCTestCase {
     func testThisOneIgnoresModel() {
         if case .front(1, _) = RouteJudge.decide(.front(1, "hi"), model: 3, explicitFront: true).0 {} else { XCTFail() }
     }
-    func testChooseAgreesWithTopSends() {
-        if case .named(2, _) = RouteJudge.decide(.choose([2, 0], "hi", heardName: "home"), model: 2).0 {} else { XCTFail() }
+    /// Two chats tie on the name: the model alone does not break it.
+    func testChooseTieStillAsks() {
+        guard case .choose = RouteJudge.decide(.choose([2, 0], "hi", heardName: "home"), model: 2).0 else { return XCTFail() }
     }
     func testMemoryConfirmsModel() {
         if case .named(0, _) = RouteJudge.decide(.choose([2, 0], "hi", heardName: "home"), model: 0, memory: 0).0 {} else { XCTFail() }

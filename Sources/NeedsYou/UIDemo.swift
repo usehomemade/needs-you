@@ -35,6 +35,8 @@ enum UIDemo {
                 Nav.openSettings()
             case "training":
                 Nav.open("training")
+            case "debug":
+                Nav.open("debug")
             case "name":
                 Nav.open("name")
             case "menu":

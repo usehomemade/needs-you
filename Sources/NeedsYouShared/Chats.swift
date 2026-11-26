@@ -101,6 +101,7 @@ public struct ChatInfo: Codable, Equatable, Identifiable, Sendable {
         switch agent {
         case "claude": return "Claude Code"
         case "codex": return "Codex"
+        case "claude-app": return "Claude app"
         case "gemini": return "Gemini"
         case "opencode": return "opencode"
         default: return agent

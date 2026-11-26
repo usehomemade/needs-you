@@ -7,7 +7,14 @@ import FoundationModels
 /// Picks the chat a voice message is for with Apple's on-device model (HM-1364).
 /// Nothing leaves the Mac. It starts on the partial transcript while he is still
 /// talking, so the pick is usually ready when he stops (about half a second on an
-/// M-series Mac). It only names a chat; the message text comes from the matcher.
+/// M-series Mac). It names a chat, says whether he asked for a new chat, and gives the
+/// message without the words that name the chat (HM-1383); the caller checks both.
+struct ModelPick: Hashable {
+    var index: Int
+    var newChat: Bool
+    var message: String
+}
+
 @MainActor final class ModelRouter {
     static let shared = ModelRouter()
 
@@ -19,8 +26,8 @@ import FoundationModels
     }
 
     private struct Key: Hashable { let text: String; let ids: [String] }
-    private var cache: [Key: Int?] = [:]
-    private var running: [Key: Task<Int?, Never>] = [:]
+    private var cache: [Key: ModelPick?] = [:]
+    private var running: [Key: Task<ModelPick?, Never>] = [:]
     private var debounce: Task<Void, Never>?
     private var warmed: Any?
 
@@ -45,14 +52,14 @@ import FoundationModels
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled, let self else { return }
             let targets = await Router.voiceTargets()
-            guard targets.count >= 2 else { return }
+            guard !targets.isEmpty else { return }
             _ = await self.pick(rest, targets)
         }
     }
 
     /// The model's pick (index into `targets`) or nil (none fits, no model, or too slow).
-    func pick(_ rest: String, _ targets: [ChatTarget]) async -> Int? {
-        guard Self.available, targets.count >= 2 else { return nil }
+    func pick(_ rest: String, _ targets: [ChatTarget]) async -> ModelPick? {
+        guard Self.available, !targets.isEmpty else { return nil }
         let key = Key(text: Self.norm(rest), ids: targets.map(\.id))
         if let hit = cache[key] { return hit }
         // A partial that already covered the whole sentence counts.
@@ -73,6 +80,15 @@ import FoundationModels
 
     func reset() { cache.removeAll(); debounce?.cancel() }
 
+    /// The model's message, if it is really his words: most of its words are in what he
+    /// said (the model may not add or rephrase anything).
+    nonisolated static func trusted(_ message: String, in rest: String) -> String? {
+        let said = Set(ChatMatcher.words(rest))
+        let w = ChatMatcher.words(message)
+        guard w.count >= 2 else { return nil }
+        return Double(w.filter(said.contains).count) / Double(w.count) >= 0.85 ? message : nil
+    }
+
     private static func norm(_ s: String) -> String {
         s.lowercased().replacingOccurrences(of: #"[^\p{L}\p{N} ]"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
@@ -84,6 +100,9 @@ import FoundationModels
             var parts = ["\(i + 1). \(t.title)"]
             if !t.folder.isEmpty { parts.append("folder: \(t.folder)") }
             if !t.detail.isEmpty, t.detail != t.title { parts.append("working on: \(String(t.detail.prefix(140)))") }
+            if t.kind == .desktop {
+                parts.append(t.appChat == nil ? "a chat app; can start a new chat" : "an earlier chat in \(Router.runningChatApps().first { $0.bundle == t.id }?.title ?? "a chat app") (opens it)")
+            }
             if t.focused { parts.append("used last") }
             return parts.joined(separator: "; ")
         }.joined(separator: "\n")
@@ -92,21 +111,28 @@ import FoundationModels
     #if canImport(FoundationModels)
     @available(macOS 26, *)
     @Generable struct Pick {
-        @Guide(description: "The number of the chat the message is for, or 0 when the words name no chat")
+        @Guide(description: "The number of the chat or app the message is for, or 0 when the words name none and the topic fits none")
         var chat: Int
+        @Guide(description: "true only when he asks to start a new chat or conversation")
+        var newChat: Bool
+        @Guide(description: "The message to send, in his exact words, without the part that names the chat or app or asks for a new chat (e.g. drop 'use ChatGPT to ask')")
+        var message: String
     }
 
     @available(macOS 26, *)
     private static func session() -> LanguageModelSession {
         LanguageModelSession(instructions: """
-            The user speaks a message for one of their open AI coding chats. Pick the chat the message is for: \
-            by the name, project or folder he says, or by what the message is about. \
-            Answer 0 when he names no chat and the topic fits none clearly.
+            The user speaks a message for one of their AI chats: coding chats in a terminal or editor, \
+            and chat apps such as the Claude app or ChatGPT. Pick the chat the message is for: \
+            by the name, project, folder or app he says, or by what the message is about \
+            (a chat whose "working on" matches the topic). \
+            Answer 0 when he names no chat and the topic fits none clearly. \
+            Copy his message word for word, leaving out only the words that pick the chat.
             """)
     }
     #endif
 
-    private static func ask(_ rest: String, _ targets: [ChatTarget], warm: Any?) async -> Int? {
+    private static func ask(_ rest: String, _ targets: [ChatTarget], warm: Any?) async -> ModelPick? {
         #if canImport(FoundationModels)
         if #available(macOS 26, *) {
             let start = Date()
@@ -123,8 +149,9 @@ import FoundationModels
                 let r = try await s.respond(to: prompt, generating: Pick.self,
                                                     options: GenerationOptions(sampling: .greedy))
                 let n = r.content.chat
-                Isolation.note(String(format: "model route: %d in %.0f ms", n, Date().timeIntervalSince(start) * 1000))
-                return (1...targets.count).contains(n) ? n - 1 : nil
+                Isolation.note(String(format: "model route: %d%@ in %.0f ms", n, r.content.newChat ? " (new chat)" : "", Date().timeIntervalSince(start) * 1000))
+                guard (1...targets.count).contains(n) else { return nil }
+                return ModelPick(index: n - 1, newChat: r.content.newChat, message: r.content.message)
             } catch {
                 Isolation.note("model route failed: \(error.localizedDescription)")
                 return nil

@@ -72,3 +72,8 @@ On launch the app writes `~/.claude/needs-you.md` and adds one import line, `@ne
 ## Test flags
 
 For development only: `--mute`, `--tts-out <file>`, `--input-file <audio>`, `--simulate-silence`, `--wait <seconds>`, `--vad-file <audio>`.
+
+## Chat apps
+
+- **Claude app**: Settings, Agents, Claude app adds the Needs You MCP server to `~/Library/Application Support/Claude/claude_desktop_config.json` (a backup is kept). The app reads it at launch, so Settings offers Restart Claude. Its chats can then answer out loud. The app runs one server for all its chats, so it never shows up as a chat of its own; voice reaches it as an app ("Hey Claude, new chat on Claude desktop, ...").
+- **ChatGPT app**: its Codex tasks read `~/.codex/config.toml`, so the Codex switch covers them. Plain ChatGPT chats only take connectors on the internet and can't reach a server on this Mac. "Hey Claude, use ChatGPT to ask ..." still opens a new chat and types the question; the answer stays on screen.

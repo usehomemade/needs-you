@@ -44,6 +44,7 @@ public struct AgentInstructions {
         - `status: "interrupted"` means they said "Stop, Claude" or pressed their turn shortcut while you were talking: `spoken_until` is what they heard, `transcript` is what they said after. Take that into account and reply with `say`. If they pressed Escape instead, `transcript` is empty, `state` says so and the conversation is closed: do not repeat it.
         - One conversation at a time; your ask waits its turn. Pass `--project <label>` when the folder name does not say which project it is.
         - Voice messages: a message from \(who) that ends with `(sent by voice: reply by voice with needs-you)` came from their voice ("Hey Claude, <chat name>: <message>" or their turn shortcut). Reply out loud with `needs-you ask "<reply>"` when you need an answer from them, or `needs-you say "<reply>" --no-listen` when you don't. Keep the spoken reply brief and to the point, but give enough detail that they don't need to read the screen, and ask anything they need to decide. Also write the full answer in text as usual. If they keep asking follow-ups by voice, go deeper.
+        - Only the main agent talks to \(who). Subagents never run needs-you: they put the question in their report and the main agent asks.
         - Never run `needs-you wake-test` against real chats; tests use an armed throwaway herdr pane only.
 
         """

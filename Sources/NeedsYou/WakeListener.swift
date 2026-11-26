@@ -724,6 +724,26 @@ final class WakeListener {
         }
     }
 
+    /// Escape once while he says a command (HM-1396): what he said so far is dropped and
+    /// the command starts over, as if he had just opened his turn.
+    func restartCommand() {
+        q.async {
+            guard self.mode == .command else { return }
+            self.log("command restarted by Escape")
+            self.reset()
+            self.commitWake(notify: false, manual: true)
+        }
+    }
+
+    /// Escape twice: the command is dropped; nothing is sent.
+    func cancelCommand() {
+        q.async {
+            guard self.mode == .command else { return }
+            self.log("command cancelled by Escape")
+            self.reset()
+        }
+    }
+
     private func commitWake(notify: Bool = true, manual: Bool = false) {
         // A thinking pause right after "Hey Claude," is normal (HM-1360): 4 s, not 2.5.
         noSpeechLimit = manual ? 6 : 4

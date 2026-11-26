@@ -103,10 +103,16 @@ public enum HookSetup {
 
     /// Cursor's ~/.cursor/mcp.json: our server entry (other servers stay).
     public static func cursorMCPEdit(_ root: [String: Any], cli: String, on: Bool) -> [String: Any] {
+        mcpServerEdit(root, cli: cli, agent: "cursor", on: on)
+    }
+
+    /// An `mcpServers` JSON file (Cursor, the Claude app): adds or removes only our entry;
+    /// every other server and key stays. An empty `mcpServers` we leave behind is dropped.
+    public static func mcpServerEdit(_ root: [String: Any], cli: String, agent: String, on: Bool) -> [String: Any] {
         var root = root
         var servers = root["mcpServers"] as? [String: Any] ?? [:]
-        servers["needs-you"] = on ? ["command": cli, "args": ["mcp"], "env": ["NEEDS_YOU_AGENT": "cursor"]] as [String: Any] : nil
-        root["mcpServers"] = servers
+        servers["needs-you"] = on ? ["command": cli, "args": ["mcp"], "env": ["NEEDS_YOU_AGENT": agent]] as [String: Any] : nil
+        root["mcpServers"] = servers.isEmpty ? nil : servers
         return root
     }
 

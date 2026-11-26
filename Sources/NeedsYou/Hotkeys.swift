@@ -26,7 +26,7 @@ final class Hotkeys: ObservableObject {
     @Published private(set) var turn: KeyCombo? = Hotkeys.storedTurn
     /// True while Escape is registered (test hook and logs).
     private(set) var escapeOn = false
-    private var escapeSpeaking = false, escapeSending = false
+    private var escapeSpeaking = false, escapeSending = false, escapeCapturing = false, escapeListening = false
 
     static let defaultsKey = "turnShortcut"
 
@@ -73,8 +73,14 @@ final class Hotkeys: ObservableObject {
     /// Escape cancels a voice command during its countdown.
     func escapeWhileSending(_ on: Bool) { escapeSending = on; applyEscape() }
 
+    /// Escape while he says a Hey Claude command: start over / cancel (HM-1396).
+    func escapeWhileCapturing(_ on: Bool) { escapeCapturing = on; applyEscape() }
+
+    /// Escape while he answers a question: start over / voicemail (HM-1396).
+    func escapeWhileListening(_ on: Bool) { escapeListening = on; applyEscape() }
+
     private func applyEscape() {
-        let on = escapeSpeaking || escapeSending
+        let on = escapeSpeaking || escapeSending || escapeCapturing || escapeListening
         guard on != escapeOn else { return }
         if on {
             if let err = register(.escape, .escape) { Isolation.note("keys: Escape not registered (\(err))"); return }
@@ -126,7 +132,10 @@ final class Hotkeys: ObservableObject {
                 MainActor.assumeIsolated {
                     switch ID(rawValue: id) {
                     case .escape:
-                        if !VoiceCommands.shared.cancelPendingSend() { Conductor.shared.escapePressed() }
+                        if VoiceCommands.shared.cancelPendingSend() { break }
+                        if Conductor.shared.voicePlaying { Conductor.shared.escapePressed() }
+                        else if VoiceCommands.shared.capturing { VoiceCommands.shared.escapeWhileCapturing() }
+                        else if Conductor.shared.answering { Conductor.shared.escapeWhileAnswering() }
                     case .turn: TurnShortcut.pressed()
                     case .n1, .n2, .n3, .n4: Conductor.shared.numberPressed(Int(id) - 10)
                     case nil: break

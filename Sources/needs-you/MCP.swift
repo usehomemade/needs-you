@@ -23,7 +23,8 @@ final class MCPServer {
     Needs You lets the user talk to this chat by voice and lets you talk to them out loud.
     Call `status` with one short line on what this chat is working on whenever the topic changes (it is how the user's spoken messages find this chat). \
     Use `ask` when you need the user (a decision, approval, login, anything blocking); `say` to answer a follow-up; `done` to end the conversation. \
-    A message ending with "(sent by voice: reply by voice with needs-you)" came from the user's voice: reply out loud with `ask` or `say` (no_listen when no answer is needed), brief, and also in the chat.
+    A message ending with "(sent by voice: reply by voice with needs-you)" came from the user's voice: reply out loud with `ask` or `say` (no_listen when no answer is needed), brief, and also in the chat. \
+    Only the main agent uses Needs You: a subagent never calls these tools; it puts its question in its report and the main agent asks.
     """
 
     func run() -> Never {
@@ -60,6 +61,9 @@ final class MCPServer {
     }
 
     private func register(_ event: String, status: String? = nil) {
+        // The Claude app runs one server for all its chats (HM-1385): it is reached as an
+        // app ("Hey Claude, new chat on Claude desktop"), never as a registered chat.
+        if kind == "claude-app" { return }
         var r = Request(command: .register)
         var u = update(event)
         u.status = status

@@ -15,6 +15,8 @@ public struct ChatCandidate: Equatable, Sendable {
     public var focused: Bool
     /// The Claude desktop app: in front, it counts as "this one" before any pane.
     public var isDesktop: Bool
+    /// Chat apps: the chat open in it ("Learning to bake sourdough"); counts for the topic.
+    public var detail = ""
 
     public init(title: String, label: String = "", folder: String = "", aliases: [String] = [], focused: Bool = false, isDesktop: Bool = false) {
         self.title = title; self.label = label; self.folder = folder
@@ -43,6 +45,9 @@ public enum ChatMatcher {
 
     public static let newChatPattern = #"^(?i)(?:a\s+|start\s+a\s+|open\s+a\s+)?new\s+(?:chat|session|conversation|claude)\b\s*(?:in|for|at|on)?\s*([^:,.]*?)\s*[:,.]\s*(.*)$"#
     public static let thisOne = #"^(?i)(this one|this chat|this window|this tab|this|here)\b[\s,.:;!-]*"#
+    /// "send a message to the Game Boy terminal, say hi" / "tell the orchard chat: ..." (HM-1383).
+    public static let toChatPattern = #"^(?i)(?:please\s+)?(?:send|write|type|post|pass|forward|tell|ask|message|say)\b.{0,30}?\b(?:to|in|into)\s+(?:the\s+|my\s+)?([\p{L}\p{N} _-]{2,40}?)\s+(?:terminal|chat|tab|session|window|pane)\b[\s,.:;-]*(.*)$"#
+    public static let tellChatPattern = #"^(?i)(?:please\s+)?(?:tell|ask|message)\s+(?:the\s+|my\s+)?([\p{L}\p{N} _-]{2,40}?)\s+(?:terminal|chat|tab|session|window|pane)\b[\s,.:;-]*(.*)$"#
 
     // MARK: Decision
 
@@ -73,6 +78,25 @@ public enum ChatMatcher {
         // "this one: ..."
         if let r = rest.range(of: thisOne, options: .regularExpression), !rest[r].trimmingCharacters(in: .whitespaces).isEmpty {
             return (.front(front, String(rest[r.upperBound...])), "this one -> " + name(front, chats))
+        }
+        // "send a message to the Game Boy terminal, say hi": a name, said as a place. One that
+        // matches no chat asks; it never falls back to the chat in front.
+        for p in [toChatPattern, tellChatPattern] {
+            guard let re = try? NSRegularExpression(pattern: p),
+                  let m = re.firstMatch(in: rest, range: NSRange(rest.startIndex..., in: rest)),
+                  let hr = Range(m.range(at: 1), in: rest), let mr = Range(m.range(at: 2), in: rest) else { continue }
+            let heard = String(rest[hr]).trimmingCharacters(in: .whitespaces)
+            if heard.range(of: thisOne, options: .regularExpression) != nil, heard.split(separator: " ").count <= 1 { break }
+            let message = String(rest[mr])
+            let ranked = rank(heard, chats)
+            let log = "heard \"\(heard)\" (said as a chat): " + describe(ranked, chats)
+            if let best = ranked.first, best.score >= 0.5, (ranked.dropFirst().first?.score ?? 0) <= best.score - 0.2 {
+                return (.named(best.index, message), log)
+            }
+            let options = ranked.filter { $0.score > 0 }.prefix(3).map(\.index)
+            if !options.isEmpty { return (.choose(Array(options), message, heardName: heard), log) }
+            if isProject(heard) { return (.newChat(heard, message), log + "; project folder -> new chat") }
+            return (.choose([], message, heardName: heard), log + "; no such chat")
         }
         // "<name>: <message>"
         if let colon = rest.firstIndex(of: ":"), rest.distance(from: rest.startIndex, to: colon) <= 60 {
@@ -216,28 +240,32 @@ public enum ChatMatcher {
 /// matcher or with what he picked before for the same words (`memory`). When they
 /// disagree, Needs You asks, with the model's pick first.
 public enum RouteJudge {
+    /// Never a guess (the owner, 26 Nov): a message goes to a chat only when he named it, said
+    /// "this one", or its words clearly point to one chat (`topic`, confirmed by the model
+    /// or by routing memory). Everything else asks. The chat used last is never a fallback.
     /// `explicitFront`: he said "this one", so the chat in front stays.
-    public static func decide(_ fast: ChatMatcher.Route, model: Int?, memory: Int? = nil, explicitFront: Bool = false) -> (ChatMatcher.Route, String) {
-        func ask(_ first: Int, _ rest: [Int], _ m: String, _ heard: String) -> ChatMatcher.Route {
-            .choose(Array(([first] + rest.filter { $0 != first }).prefix(4)), m, heardName: heard)
+    public static func decide(_ fast: ChatMatcher.Route, model: Int?, memory: Int? = nil, topic: Int? = nil, explicitFront: Bool = false) -> (ChatMatcher.Route, String) {
+        func ask(_ first: Int?, _ rest: [Int], _ m: String, _ heard: String) -> ChatMatcher.Route {
+            var seen = Set<Int>(), out: [Int] = []
+            for i in ([first].compactMap { $0 } + rest) where seen.insert(i).inserted { out.append(i) }
+            return .choose(Array(out.prefix(4)), m, heardName: heard)
         }
         switch fast {
         case .named, .newChat:
             return (fast, "")
         case .front(let i, let m):
             if explicitFront { return (fast, "") }
-            if let mem = memory, mem == model || model == nil { return (.named(mem, m), "memory picks \(mem)") }
-            guard let j = model else { return (fast, "") }
-            if j == i { return (fast, "model agrees with front") }
-            if let mem = memory, mem == j { return (.named(j, m), "model and memory agree") }
-            return (ask(j, i.map { [$0] } ?? [], m, ""), "model picks \(j), front is \(i.map(String.init) ?? "none") -> ask")
-        case .choose(let idx, let m, let heard):
-            guard let j = model else {
-                if let mem = memory, idx.contains(mem) { return (.named(mem, m), "memory picks \(mem)") }
-                return (fast, "")
+            if let t = topic {
+                if model == nil || model == t || memory == t { return (.named(t, m), "topic -> \(t)") }
+                return (ask(t, [model].compactMap { $0 }, m, ""), "topic \(t), model \(model.map(String.init) ?? "-") -> ask")
             }
-            if j == idx.first || j == memory { return (.named(j, m), "model agrees -> \(j)") }
-            return (ask(j, idx, m, heard), "model picks \(j) -> ask")
+            if let mem = memory, mem == model || model == nil { return (.named(mem, m), "memory picks \(mem)") }
+            return (ask(model, [memory, i].compactMap { $0 }, m, ""), "no name -> ask")
+        case .choose(let idx, let m, let heard):
+            if idx.isEmpty { return (fast, "") } // a name that matches no chat: say so
+            if let j = model, j == memory || j == topic { return (.named(j, m), "model agrees -> \(j)") }
+            if model == nil, let mem = memory, idx.contains(mem) { return (.named(mem, m), "memory picks \(mem)") }
+            return (ask(model, idx, m, heard), model.map { "model picks \($0) -> ask" } ?? "")
         }
     }
 }

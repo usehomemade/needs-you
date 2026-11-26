@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import NeedsYouShared
 
@@ -10,9 +11,25 @@ final class AgentConnect: ObservableObject {
     static let shared = AgentConnect()
 
     enum Agent: String, CaseIterable, Identifiable {
-        case claude, codex, cursor
+        case claude, codex, cursor, claudeApp
         var id: String { rawValue }
-        var name: String { switch self { case .claude: return "Claude Code"; case .codex: return "Codex"; case .cursor: return "Cursor (agent chat)" } }
+        /// The app whose icon stands for it (nil: a terminal agent).
+        var appBundle: String? {
+            switch self {
+            case .claude: return nil
+            case .codex: return "com.openai.codex"
+            case .cursor: return "com.todesktop.230313mzl4w4u92"
+            case .claudeApp: return Router.desktopBundleID
+            }
+        }
+        var name: String {
+            switch self {
+            case .claude: return "Claude Code"
+            case .codex: return "Codex (also Codex in the ChatGPT app)"
+            case .cursor: return "Cursor (agent chat)"
+            case .claudeApp: return "Claude app"
+            }
+        }
     }
 
     @Published private(set) var connected: [Agent: Bool] = [:]
@@ -38,6 +55,20 @@ final class AgentConnect: ObservableObject {
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cursor")
     }
 
+    /// The Claude app's MCP config (HM-1385). Its chats answer out loud once it has our server.
+    var claudeAppConfig: URL {
+        if let d = ProcessInfo.processInfo.environment["NEEDS_YOU_CLAUDE_APP_DIR"], !d.isEmpty { return URL(fileURLWithPath: d).appendingPathComponent("claude_desktop_config.json") }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Claude/claude_desktop_config.json")
+    }
+
+    /// Set after connecting or disconnecting the Claude app while it runs: it reads its config only at launch.
+    @Published var claudeAppNeedsRestart = false
+
+    /// The ChatGPT app on this Mac (com.openai.codex is the ChatGPT app with Codex built in).
+    var chatGPTApp: URL? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.chat")
+    }
+
     var claudeBinary: String? {
         let home = NSHomeDirectory()
         return [home + "/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude", home + "/.claude/local/claude"]
@@ -51,6 +82,20 @@ final class AgentConnect: ObservableObject {
         connected[.codex] = (try? String(contentsOf: codexConfig, encoding: .utf8)).map(AgentSetup.hasBlock) ?? false
         installed[.cursor] = FileManager.default.fileExists(atPath: cursorDir.path) || FileManager.default.fileExists(atPath: "/Applications/Cursor.app")
         connected[.cursor] = (readJSON(cursorDir.appendingPathComponent("mcp.json"))?["mcpServers"] as? [String: Any])?["needs-you"] != nil
+        installed[.claudeApp] = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Router.desktopBundleID) != nil
+        connected[.claudeApp] = (readJSON(claudeAppConfig)?["mcpServers"] as? [String: Any])?["needs-you"] != nil
+    }
+
+    /// Quits the Claude app and opens it again, so it loads the new config.
+    func restartClaudeApp() {
+        claudeAppNeedsRestart = false
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Router.desktopBundleID).first,
+              let url = app.bundleURL else { return }
+        app.terminate()
+        Task {
+            for _ in 0..<100 where !app.isTerminated { try? await Task.sleep(nanoseconds: 100_000_000) }
+            _ = try? await NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        }
     }
 
     /// Reads ~/.claude.json (never writes it).
@@ -89,11 +134,34 @@ final class AgentConnect: ObservableObject {
                 // Cursor's agent chat: our MCP server in mcp.json, our hooks in hooks.json (its flat format).
                 try editJSON(cursorDir.appendingPathComponent("mcp.json")) { AgentSetup.cursorMCPEdit($0, cli: cli, on: on) }
                 try editJSON(cursorDir.appendingPathComponent("hooks.json")) { on ? HookSetup.installCursor($0, cli: cli) : HookSetup.removeCursor($0) }
+            case .claudeApp:
+                // The Claude app has no hooks: only our MCP server in claude_desktop_config.json.
+                let before = connected[.claudeApp] ?? false
+                try editJSON(claudeAppConfig) { HookSetup.mcpServerEdit($0, cli: cli, agent: "claude-app", on: on) }
+                if before != on, !NSRunningApplication.runningApplications(withBundleIdentifier: Router.desktopBundleID).isEmpty {
+                    claudeAppNeedsRestart = true
+                }
             }
         } catch {
             lastError = error.localizedDescription
         }
         refresh()
+    }
+
+    /// On launch: Claude Code hooks from another version are brought to this version's events
+    /// (added or removed). Only when they are on; nothing else in the file changes.
+    func refreshClaudeHooks() {
+        guard !Prefs.readOnly else { return }
+        let url = AgentInstructions.targetDir().appendingPathComponent("settings.json")
+        guard let d = try? Data(contentsOf: url), let root = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+              HookSetup.isInstalled(root) else { return }
+        let hooks = root["hooks"] as? [String: Any] ?? [:]
+        let ours = Set(hooks.keys.filter { e in
+            ((hooks[e] as? [[String: Any]]) ?? []).contains { g in
+                ((g["hooks"] as? [[String: Any]]) ?? []).contains { HookSetup.isOurs(($0["command"] as? String) ?? "") }
+            }
+        })
+        if ours != Set(HookSetup.claudeEvents) { try? editHooks(url, on: true, agent: "claude", events: HookSetup.claudeEvents) }
     }
 
     /// Adds or removes Needs You's hook entries; every other hook stays. One backup per file.

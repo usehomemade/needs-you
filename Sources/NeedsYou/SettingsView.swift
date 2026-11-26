@@ -120,7 +120,7 @@ struct HeyClaudePane: View {
             Section {
                 LabeledContent("Your Turn Shortcut") { ShortcutRecorder() }
             } footer: {
-                Text("Same as saying \u{201C}\(phrase)\u{201D}: opens your turn at once. Press it again to finish, or while Claude talks to cut it off and speak. Does nothing during Do Not Disturb. Esc stops Claude talking.")
+                Text("Same as saying \u{201C}\(phrase)\u{201D}: opens your turn at once. Press it again to finish, or while Claude talks to cut it off and speak. Does nothing during Do Not Disturb. Esc stops Claude talking. While you talk, Esc starts you over; Esc twice cancels your command, or keeps Claude\u{2019}s question as a voicemail.")
                     .foregroundStyle(.secondary)
             }
             Section {
@@ -493,19 +493,77 @@ struct ReachByVoiceSection: View {
     var body: some View {
         Section {
             ForEach(AgentConnect.Agent.allCases) { agent in
-                Toggle(agent.name, isOn: Binding(get: { connect.connected[agent] ?? false },
-                                                 set: { connect.set(agent, connected: $0) }))
-                    .disabled(!(connect.installed[agent] ?? false))
+                Toggle(isOn: Binding(get: { connect.connected[agent] ?? false },
+                                     set: { connect.set(agent, connected: $0) })) {
+                    Label { Text(agent.name) } icon: { AppIcon(bundle: agent.appBundle, fallback: "terminal") }
+                }
+                .disabled(!(connect.installed[agent] ?? false))
             }
+            if connect.claudeAppNeedsRestart {
+                HStack {
+                    Label("The Claude app loads the change when it restarts.", systemImage: "arrow.clockwise")
+                    Spacer()
+                    Button("Restart Claude") { connect.restartClaudeApp() }
+                }
+            }
+            ChatGPTRow()
             LabeledContent("Chats reachable now", value: "\(registry.reachable.count)")
             if let e = connect.lastError { Label(e, systemImage: "xmark.octagon").foregroundStyle(.red) }
         } header: {
             Text("Reach by Voice")
         } footer: {
-            Text("Adds the Needs You MCP server and hooks to the agent (a backup of each file is kept). Each chat then tells Needs You what it is working on. A message for an idle chat is typed into it through Accessibility; a busy chat gets it at its next step. Chats of agents that are not connected cannot be reached by voice. New chats pick it up; restart open ones. Codex asks once to trust the new hooks.")
+            Text("Adds the Needs You MCP server and hooks to the agent (a backup of each file is kept). Each chat then tells Needs You what it is working on. A message for an idle chat is typed into it through Accessibility; a busy chat gets it at its next step. Chats of agents that are not connected cannot be reached by voice. New chats pick it up; restart open ones. Codex asks once to trust the new hooks. The Claude app gets the MCP server only, so its chats can answer out loud; \u{201C}Hey Claude, new chat on Claude desktop, ...\u{201D} reaches it either way.")
                 .foregroundStyle(.secondary)
         }
         .onAppear { connect.refresh() }
+    }
+}
+
+/// An installed app's own icon at label size, or an SF Symbol when it has none.
+struct AppIcon: View {
+    var bundle: String?
+    var fallback: String
+    var size: CGFloat = 16
+
+    var body: some View {
+        if let b = bundle, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: size, height: size)
+        } else {
+            Image(systemName: fallback).frame(width: size, height: size)
+        }
+    }
+}
+
+/// ChatGPT (HM-1385): its Codex tasks read ~/.codex/config.toml, so the Codex switch covers
+/// them. Plain ChatGPT chats only take connectors on the internet (Settings, Apps &
+/// Connectors, Developer mode), which can't reach a server on this Mac; voice still types into them.
+struct ChatGPTRow: View {
+    @ObservedObject private var connect = AgentConnect.shared
+    @State private var guide = false
+
+    var body: some View {
+        if let url = connect.chatGPTApp {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Text(connect.connected[.codex] == true ? "Codex tasks connected" : "Turn on Codex above")
+                        .foregroundStyle(.secondary)
+                    Button("How\u{2026}") { guide.toggle() }
+                        .popover(isPresented: $guide, arrowEdge: .trailing) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("ChatGPT").font(.headline)
+                                Text("1. Codex tasks in the ChatGPT app use the Codex connection. Turn on Codex above, then start a new task. They answer out loud like Claude Code.")
+                                Text("2. Plain ChatGPT chats can only use connectors on the internet, so they can't reach Needs You on this Mac. You can still talk to them: \u{201C}Hey Claude, use ChatGPT to ask \u{2026}\u{201D} opens a new chat and types your question. The answer stays on screen.")
+                                Button("Open ChatGPT") { NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) }
+                            }
+                            .font(.callout)
+                            .frame(width: 320)
+                            .padding()
+                        }
+                }
+            } label: {
+                Label { Text("ChatGPT app") } icon: { AppIcon(bundle: "com.openai.codex", fallback: "bubble.left") }
+            }
+        }
     }
 }
 

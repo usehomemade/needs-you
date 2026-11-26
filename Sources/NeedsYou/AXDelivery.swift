@@ -20,6 +20,8 @@ enum AXDelivery {
         var pane: PaneRef?
         /// When no process is known (the Claude desktop app).
         var bundleID: String?
+        /// Leave the app in front after sending (a chat app that can't answer out loud, HM-1383).
+        var stayInFront = false
     }
 
     enum Outcome: Equatable {
@@ -185,7 +187,14 @@ enum AXDelivery {
         try? await Task.sleep(nanoseconds: 120_000_000)
         log("pasted and sent")
 
-        // 7. Put everything back.
+        // 7. Put everything back (only the clipboard when he should see the answer there).
+        if t.stayInFront {
+            let board = NSPasteboard.general
+            board.clearContents()
+            if !saved.board.isEmpty { board.writeObjects(saved.board) }
+            log("left \(app.localizedName ?? "the app") in front, total \(ms(t0)) ms")
+            return .typed(app.localizedName ?? "the app")
+        }
         await undo(saved, previousTab, muxRestore, hostPid)
         log("restored to \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?") (was \(saved.app?.localizedName ?? "?")), total \(ms(t0)) ms")
         return .typed(app.localizedName ?? "the app")
@@ -310,6 +319,22 @@ enum AXDelivery {
         return ins
     }
 
+    /// Presses the first enabled menu bar item whose title starts with one of `titles`
+    /// (File > New Chat). Returns its title, or nil when the app has none.
+    static func pressMenuItem(_ app: AXUIElement, titles: [String]) -> String? {
+        guard let bar = element(app, kAXMenuBarAttribute) else { return nil }
+        for top in (attr(bar, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+            for menu in (attr(top, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+                for item in (attr(menu, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+                    let t = str(item, kAXTitleAttribute) ?? ""
+                    guard !t.isEmpty, titles.contains(where: { t.hasPrefix($0) }), (attr(item, kAXEnabledAttribute) as? Bool) != false else { continue }
+                    if AXUIElementPerformAction(item, kAXPressAction as CFString) == .success { return t }
+                }
+            }
+        }
+        return nil
+    }
+
     /// Test guard: the Claude app's page is a new, empty session (nothing of his is in it).
     static func desktopShowsNewSession(_ bundle: String = Router.desktopBundleID) -> Bool {
         guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first else { return false }
@@ -351,28 +376,95 @@ enum AXDelivery {
         return kp.kp_eproc.e_tdev != -1 && kp.kp_eproc.e_tdev != 0
     }
 
-    static func isElectron(_ app: NSRunningApplication) -> Bool {
+    nonisolated static func isElectron(_ app: NSRunningApplication) -> Bool {
         guard let u = app.bundleURL else { return false }
         return FileManager.default.fileExists(atPath: u.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path)
     }
 
     /// Chromium and Electron build their accessibility tree only when asked.
-    static func enableWebAX(_ app: NSRunningApplication) {
+    nonisolated static func enableWebAX(_ app: NSRunningApplication) {
         AXUIElementSetAttributeValue(AXUIElementCreateApplication(app.processIdentifier), "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    }
+
+    /// One read of a chat app's main window (HM-1394): the chat open in it and its chat list,
+    /// found by layout (ChatListFinder), with no knowledge of the app. Chromium and Electron
+    /// apps build their tree only when asked, so the first read can come back empty.
+    struct AppScan {
+        var open: String?
+        var chats: [(title: String, element: AXUIElement)]
+        /// A message field wide enough to type a chat message into.
+        var hasField = false
+        /// Elements read; a web app that has not built its tree yet gives a handful.
+        var nodes = 0
+    }
+
+    nonisolated static func scanApp(_ bundle: String) -> AppScan? {
+        guard AXIsProcessTrusted(), let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first else { return nil }
+        enableWebAX(app) // any app; the ones that are not web based ignore it
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        guard let window = element(root, kAXMainWindowAttribute) ?? element(root, kAXFocusedWindowAttribute)
+            ?? (attr(root, kAXWindowsAttribute) as? [AXUIElement])?.first else { return nil }
+        let appName = app.localizedName ?? ""
+        var items: [AXItem] = [], elements: [AXUIElement] = [], open: String?
+        var stack: [(AXUIElement, Int)] = [(window, 0)], seen = 0
+        while let (e, depth) = stack.popLast(), seen < 4000 {
+            seen += 1
+            let r = role(e)
+            if r == "AXWebArea", open == nil, let t = str(e, kAXTitleAttribute) { open = ChatListFinder.chatTitle(t, appName: appName) }
+            if ChatListFinder.rowRoles.contains(r) || r == "AXTextArea" || r == "AXTextField" {
+                let label = str(e, kAXTitleAttribute).flatMap { $0.isEmpty ? nil : $0 } ?? str(e, kAXDescriptionAttribute) ?? ""
+                let f = frame(e)
+                items.append(AXItem(role: r, label: label, depth: depth, x: f.minX, y: f.minY, width: f.width, height: f.height))
+                elements.append(e)
+            }
+            if let kids = attr(e, kAXChildrenAttribute) as? [AXUIElement] { stack += kids.reversed().map { ($0, depth + 1) } }
+        }
+        if open == nil, let t = str(window, kAXTitleAttribute) { open = ChatListFinder.chatTitle(t, appName: appName) }
+        var titles = Set<String>()
+        let chats = ChatListFinder.chats(items, messageField: ChatListFinder.messageField(items)).compactMap { i -> (String, AXUIElement)? in
+            titles.insert(items[i].label).inserted ? (items[i].label, elements[i]) : nil
+        }
+        return AppScan(open: open, chats: chats, hasField: ChatListFinder.isChatLayout(items), nodes: seen)
+    }
+
+    nonisolated static func frame(_ e: AXUIElement) -> CGRect {
+        var p = CGPoint.zero, s = CGSize.zero
+        if let v = attr(e, kAXPositionAttribute), CFGetTypeID(v) == AXValueGetTypeID() { AXValueGetValue(v as! AXValue, .cgPoint, &p) }
+        if let v = attr(e, kAXSizeAttribute), CFGetTypeID(v) == AXValueGetTypeID() { AXValueGetValue(v as! AXValue, .cgSize, &s) }
+        return CGRect(origin: p, size: s)
+    }
+
+    /// The chat open in a chat app, e.g. "Learning to bake sourdough".
+    nonisolated static func openChatTitle(_ bundle: String) -> String? { scanApp(bundle)?.open }
+
+    /// Clicks a chat in the app's chat list and waits until it is the open one.
+    static func openSidebarChat(_ bundle: String, title: String) async -> Bool {
+        if openChatTitle(bundle)?.caseInsensitiveCompare(title) == .orderedSame { return true }
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first?.activate()
+        guard let row = scanApp(bundle)?.chats.first(where: { $0.title == title })?.element else { return false }
+        AXUIElementPerformAction(row, kAXPressAction as CFString)
+        for _ in 0..<30 {
+            try? await Task.sleep(for: .milliseconds(150))
+            if let now = openChatTitle(bundle), title.hasPrefix(now) || now.hasPrefix(title) {
+                try? await Task.sleep(for: .milliseconds(400)) // the message field comes in after the title
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: AX helpers
 
-    static func attr(_ e: AXUIElement, _ a: String) -> AnyObject? {
+    nonisolated static func attr(_ e: AXUIElement, _ a: String) -> AnyObject? {
         var v: AnyObject?
         return AXUIElementCopyAttributeValue(e, a as CFString, &v) == .success ? v : nil
     }
-    static func str(_ e: AXUIElement, _ a: String) -> String? { attr(e, a) as? String }
-    static func element(_ e: AXUIElement, _ a: String) -> AXUIElement? {
+    nonisolated static func str(_ e: AXUIElement, _ a: String) -> String? { attr(e, a) as? String }
+    nonisolated static func element(_ e: AXUIElement, _ a: String) -> AXUIElement? {
         guard let v = attr(e, a), CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
         return (v as! AXUIElement)
     }
-    static func role(_ e: AXUIElement) -> String { str(e, kAXRoleAttribute) ?? "?" }
+    nonisolated static func role(_ e: AXUIElement) -> String { str(e, kAXRoleAttribute) ?? "?" }
     static func title(_ e: AXUIElement) -> String {
         if let t = str(e, kAXTitleAttribute), !t.isEmpty { return t }
         return str(e, kAXDescriptionAttribute) ?? ""
