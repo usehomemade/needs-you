@@ -13,7 +13,7 @@ name: Release
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md", "docs/**", "tools/**", "site/**"]
+    paths-ignore: ["**.md", "docs/**", "tools/**", "site/**", "backlog/**"]
   workflow_dispatch:
     inputs:
       dry_run:
