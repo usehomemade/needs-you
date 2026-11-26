@@ -42,6 +42,9 @@ struct TargetsDebug: View {
         List {
             Section("Status") {
                 LabeledContent("Accessibility", value: AXIsProcessTrusted() ? "Allowed" : "Not allowed: nothing can be typed")
+                if !AXIsProcessTrusted() {
+                    Button("Open Accessibility Settings\u{2026}") { PermissionSettings.open(.accessibility) }
+                }
                 LabeledContent("On-device model", value: ModelRouter.available ? "Available" : "Not available: the matcher routes alone")
                 LabeledContent("Router targets", value: "\(targets.count), read \(at.formatted(date: .omitted, time: .standard))")
             }
@@ -146,6 +149,9 @@ struct RouteTrial: Identifiable {
     var message: String?
     var steps: [(String, String)]
     var ranked: [(String, Double, String)]
+    /// Closest chats by meaning (top 5) and the votes of earlier matches (HM-1408).
+    var meaning: [(String, Double)] = []
+    var learned: [(String, Double, String)] = []
     var ms: Int
 }
 
@@ -166,7 +172,7 @@ struct RouterDebug: View {
                     .keyboardShortcut(.return, modifiers: [])
                     .disabled(running || text.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            Text("Runs the same router as a spoken command (matcher, on-device model, topic, routing memory) over the targets open right now. Nothing is sent.")
+            Text("Runs the same router as a spoken command (on-device model, meaning, learned matches, names and topic words) over the targets open right now. Nothing is sent.")
                 .font(.caption).foregroundStyle(.secondary)
             List {
                 ForEach(trials) { t in
@@ -175,6 +181,19 @@ struct RouterDebug: View {
                         if let m = t.message { LabeledContent("Message") { Text(m).textSelection(.enabled) } }
                         ForEach(Array(t.steps.enumerated()), id: \.offset) { _, s in
                             LabeledContent(s.0) { Text(s.1).foregroundStyle(.secondary).textSelection(.enabled) }
+                        }
+                        if !t.meaning.isEmpty {
+                            DisclosureGroup("Meaning (top 5)", isExpanded: .constant(true)) {
+                                ForEach(Array(t.meaning.enumerated()), id: \.offset) { _, r in
+                                    LabeledContent(r.0) { Text(String(format: "%.2f", r.1)).monospacedDigit().foregroundStyle(.secondary) }
+                                }
+                            }
+                        }
+                        DisclosureGroup("Learned votes (\(t.learned.count))") {
+                            if t.learned.isEmpty { Text("No earlier message like this one went to an open chat.").foregroundStyle(.secondary) }
+                            ForEach(Array(t.learned.enumerated()), id: \.offset) { _, r in
+                                LabeledContent(r.0) { Text(String(format: "%.2f \u{00B7} %@", r.1, r.2)).foregroundStyle(.secondary).textSelection(.enabled) }
+                            }
                         }
                         if !t.ranked.isEmpty {
                             DisclosureGroup("Name scores") {
@@ -217,28 +236,31 @@ struct RouterDebug: View {
         let t0 = Date()
         // Typed without the wake phrase: add it, as if he had said it.
         let transcript = Wake.afterWakeWord(input) == nil ? "\(Wake.phrase), \(input)" : input
-        guard let rest = Wake.afterWakeWord(transcript) else {
+        guard Wake.afterWakeWord(transcript) != nil else {
             return RouteTrial(text: input, outcome: "No wake phrase", message: nil, steps: [], ranked: [], ms: 0)
         }
         let targets = await Router.voiceTargets()
         let candidates = targets.map(\.candidate)
         var steps: [(String, String)] = [("Targets", "\(targets.count): " + targets.prefix(12).enumerated().map { "\($0.offset + 1) \($0.element.title)" }.joined(separator: ", "))]
-        if let i = ChatMatcher.topic(rest, candidates) { steps.append(("Topic", "\(i + 1) \(targets[i].title)")) } else { steps.append(("Topic", "none (no chat clearly shares its rare words)")) }
         let tm = Date()
-        let intent = await ModelRouter.shared.pick(rest, targets)
-        let modelMs = Int(Date().timeIntervalSince(tm) * 1000)
-        if let m = intent {
-            let chat = m.chat.map { "\($0 + 1) \(targets[$0].title)" } ?? "no chat"
-            steps.append(("Model", "\(m.action.rawValue) \u{00B7} \(chat)\(m.named.isEmpty ? "" : " \u{00B7} named \u{201C}\(m.named)\u{201D}")\(m.meansFront ? " \u{00B7} the chat in front" : "") \u{00B7} \u{201C}\(m.message)\u{201D} \u{00B7} \(modelMs) ms"))
-        } else {
-            steps.append(("Model", ModelRouter.available ? "no answer (\(modelMs) ms)" : "not available"))
-        }
-        let words = RoutingMemory.words(rest: rest, heardName: intent?.named ?? "")
-        if let key = RoutingMemoryStore.shared.lookup(words), let i = targets.firstIndex(where: { $0.memoryKey == key }) {
-            steps.append(("Memory", "\u{201C}\(words)\u{201D} meant \(i + 1) \(targets[i].title) before"))
-        }
         let (parsed, log) = await Router.parseSmart(transcript, targets: targets)
-        steps.append(("Route log", log))
+        let ms = Int(Date().timeIntervalSince(tm) * 1000)
+        let reading = Router.lastReading
+        if let m = reading?.intent {
+            let chat = m.chat.map { "\($0 + 1) \(targets[$0].title)" } ?? "no chat"
+            var named = m.named.isEmpty ? "" : " \u{00B7} named \u{201C}\(m.named)\u{201D}"
+            if let raw = reading?.rawNamed, !raw.isEmpty, m.named.isEmpty { named = " \u{00B7} named \u{201C}\(raw)\u{201D} ignored (not his words)" }
+            steps.append(("Model", "\(m.action.rawValue) \u{00B7} \(chat)\(named)\(m.meansFront ? " \u{00B7} the chat in front" : "") \u{00B7} \u{201C}\(m.message)\u{201D}"))
+        } else {
+            steps.append(("Model", ModelRouter.available ? "no answer" : "not available"))
+        }
+        if let ev = reading?.evidence {
+            let lead = ev.meaningVeryClear.map { "very clear: \($0 + 1)" } ?? ev.meaningLead.map { "leads: \($0 + 1)" } ?? "no clear lead"
+            steps.append(("Meaning", (MeaningIndex.shared.available ? "" : "no sentence model; ") + lead + " (\(reading?.lang ?? "-"))"))
+            steps.append(("Topic", ev.topic.map { "\($0 + 1) \(targets[$0].title)\(ev.clearTopic == $0 ? " (clear)" : "")" } ?? "none (no chat clearly shares its rare words)"))
+            steps.append(("Learned", ev.learnedVeryClear.map { "very clear: \($0 + 1)" } ?? ev.learnedLead.map { "leads: \($0 + 1)" } ?? (ev.learned.isEmpty ? "no earlier match like it" : "no clear lead")))
+        }
+        steps.append(("Route log", log + " \u{00B7} \(ms) ms"))
         let outcome: String, message: String?
         switch parsed {
         case .send(let t, let m): outcome = "Send to \(t.title)"; message = m
@@ -250,8 +272,11 @@ struct RouterDebug: View {
         case .app(let a, let m, let fresh): outcome = fresh ? "New chat in \(a.title)" : "Type into \(a.title)"; message = m
         case .presence(let p): outcome = "Voice command: \(p)"; message = nil
         }
-        let named = intent?.named ?? ""
+        let named = reading?.intent?.named ?? ""
         let ranked = named.isEmpty ? [] : ChatMatcher.rank(named, candidates).prefix(5).filter { $0.score > 0 }.map { (targets[$0.index].title, $0.score, $0.field) }
-        return RouteTrial(text: input, outcome: outcome, message: message, steps: steps, ranked: Array(ranked), ms: Int(Date().timeIntervalSince(t0) * 1000))
+        let meaning = (reading?.evidence.meaning ?? []).prefix(5).map { ("\($0.index + 1) \(targets[$0.index].title)", $0.sim) }
+        let learned = (reading?.votes ?? []).prefix(5).map { ("\($0.index + 1) \(targets[$0.index].title)", $0.vote.weight, "\($0.vote.count) earlier, closest \u{201C}\($0.vote.example)\u{201D} \(String(format: "%.2f", $0.vote.bestSim))") }
+        return RouteTrial(text: input, outcome: outcome, message: message, steps: steps, ranked: Array(ranked),
+                          meaning: Array(meaning), learned: Array(learned), ms: Int(Date().timeIntervalSince(t0) * 1000))
     }
 }

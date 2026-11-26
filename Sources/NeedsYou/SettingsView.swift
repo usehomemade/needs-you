@@ -9,7 +9,7 @@ import SwiftUI
 /// title follows the pane and the last pane opens again next time.
 struct SettingsView: View {
     enum Pane: String, CaseIterable {
-        case general, heyClaude, voice, microphones, models, doNotDisturb, agents
+        case general, permissions, heyClaude, voice, microphones, models, doNotDisturb, agents
     }
 
     @AppStorage("settingsPane") private var pane = Pane.general.rawValue
@@ -18,6 +18,8 @@ struct SettingsView: View {
         TabView(selection: $pane) {
             GeneralPane()
                 .tabItem { Label("General", systemImage: "gearshape") }.tag(Pane.general.rawValue)
+            PermissionsPane()
+                .tabItem { Label("Permissions", systemImage: "lock.shield") }.tag(Pane.permissions.rawValue)
             HeyClaudePane()
                 .tabItem { Label(Wake.phrase, systemImage: "waveform") }.tag(Pane.heyClaude.rawValue)
             VoicePane()
@@ -90,6 +92,61 @@ struct GeneralPane: View {
     }
 }
 
+// MARK: Permissions (HM-1405)
+
+/// Every permission Needs You needs, checked live: when the window comes to the front
+/// and every 2 seconds while the pane shows. Missing ones come first, each with a
+/// button to its own System Settings page.
+struct PermissionsPane: View {
+    @State private var granted: [PermissionSettings.Permission: Bool] = [:]
+    @State private var advice = PermissionSettings.accessibilityAdvice
+    private let tick = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+
+    private var ordered: [PermissionSettings.Permission] {
+        let all = PermissionSettings.Permission.allCases
+        return all.filter { granted[$0] == false } + all.filter { granted[$0] != false }
+    }
+
+    var body: some View {
+        Pane(height: 420) {
+            Section {
+                ForEach(ordered) { p in row(p) }
+            } footer: {
+                Text("Needs You sends no Apple Events to other apps, needs no Input Monitoring for its shortcuts, records no screen and shows no notifications, so it never asks for Automation, Input Monitoring, Screen Recording or Notifications.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onAppear(perform: refresh)
+        .onReceive(tick) { _ in refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in refresh() }
+    }
+
+    @ViewBuilder private func row(_ p: PermissionSettings.Permission) -> some View {
+        let ok = granted[p] ?? p.granted
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(ok ? .green : .orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.title).fontWeight(ok ? .regular : .semibold)
+                Text(ok ? p.use : (p == .accessibility ? advice.line : p.fix) + " " + p.use)
+                    .font(.caption).foregroundStyle(ok ? Color.secondary : Color.orange)
+            }
+            Spacer()
+            Button(ok ? "Open\u{2026}" : "Open Settings\u{2026}") { PermissionSettings.open(p) }
+                .help("Opens System Settings, Privacy & Security, \(p.title)")
+        }
+    }
+
+    private func refresh() {
+        PermissionSettings.noteAccessibility()
+        advice = PermissionSettings.accessibilityAdvice
+        var g: [PermissionSettings.Permission: Bool] = [:]
+        for p in PermissionSettings.Permission.allCases { g[p] = p.granted }
+        if g != granted { granted = g }
+    }
+}
+
 // MARK: Hey Claude
 
 struct HeyClaudePane: View {
@@ -107,7 +164,7 @@ struct HeyClaudePane: View {
                 LabeledContent("Status", value: voice.status)
                 if voice.enabled && !voice.speechAllowed {
                     Button("Open Speech Recognition Settings\u{2026}") {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition")!)
+                        PermissionSettings.open(.speechRecognition)
                     }
                 }
             } footer: {

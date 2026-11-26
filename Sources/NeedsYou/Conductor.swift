@@ -5,7 +5,7 @@ import Foundation
 import NeedsYouShared
 
 struct Conversation: Identifiable, Codable, Hashable {
-    enum Outcome: String, Codable { case open, answered, noAnswer = "no_answer", done, error, sent, cancelled, queued, delivered }
+    enum Outcome: String, Codable { case open, answered, noAnswer = "no_answer", done, error, sent, cancelled, queued, delivered, notSent = "not_sent" }
 
     var id: String
     var title: String
@@ -975,7 +975,9 @@ final class Conductor: ObservableObject {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: return true
         case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
-        default: return false
+        default:
+            PermissionSettings.needs(.microphone) // HM-1405
+            return false
         }
     }
 
@@ -1078,7 +1080,7 @@ final class Conductor: ObservableObject {
         do {
             try await speak(question, req, usersTurn: true)
             if numberPick != nil { return nil }
-            if escaped { clarifyEscaped = true; return nil } // Escape: he does not want to pick one
+            // Escape while it speaks only stops the voice (HM-1408): he answers now. Escape twice cancels.
             // Let the room go quiet first, so the mic does not take the end of our
             // own question for his answer.
             if req.mute != true { try? await Task.sleep(nanoseconds: 350_000_000) }

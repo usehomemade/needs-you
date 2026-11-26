@@ -83,39 +83,72 @@ final class VoiceCommands: ObservableObject {
         return heardName.isEmpty ? "Which chat? \(list)?" : "I'm not sure which chat you meant. \(list)?"
     }
 
-    /// Asks which chat, once more if the answer was unclear. Returns the pick, or nil
-    /// and whether he pressed Escape. `test`: the clarify-test hook (muted, file input).
-    /// `all`: every target; an answer may name a chat that was not offered ("none of them,
-    /// there is a chat called Printer Setup Request", 26 Nov 12:33).
-    func askWhichChat(_ options: [ChatTarget], heardName: String, all: [ChatTarget] = [], test: Request? = nil, heard: ((String) -> Void)? = nil) async -> (ChatTarget?, Bool) {
-        let names = options.map { Self.short($0.title) }
-        var asked: [String] = []
-        for again in [false, true] {
-            let q = Self.whichChatQuestion(names, heardName: heardName, again: again)
-            asked.append(q)
-            let answer = await Conductor.shared.voiceClarify(q, choices: names.count > 1 ? options.count : 0, test: test)
-            if Conductor.shared.clarifyEscaped { return (nil, true) }
-            guard let answer, !answer.isEmpty else { continue }
-            heard?(answer)
-            // Pressing 1 to 4 picks an offered chat. Spoken answers go to the on-device model
-            // (HM-1399), which also sees every other chat: "none of them, the printer setup one".
-            if let n = Int(answer.trimmingCharacters(in: .whitespacesAndNewlines)), (1...options.count).contains(n) { return (options[n - 1], false) }
-            let everyone = options + all.filter { a in !options.contains { $0.id == a.id } }
-            let allNames = everyone.map { Self.short($0.title) }
-            let clean = asked.map { ChoicePick.stripEcho(answer, question: $0, names: names) }.min { $0.count < $1.count } ?? answer
-            let byName = ChoicePick.name(clean, names: allNames)
-            var pick: Int?
-            if let read = await ModelRouter.shared.choose(answer, question: q, chats: everyone) {
-                if read.cancel { Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> cancel"); return (nil, true) }
-                // An offered chat counts as he said it; another chat only when its name's rare words are in his answer.
-                if let i = read.index, i < options.count || i == byName { pick = i }
-            } else {
-                pick = byName
+    /// "Which chat then?" after an unclear answer (HM-1408): what it is about, or the closest chats by number.
+    static func followUpQuestion(_ names: [String]) -> String {
+        let base = "Which chat then? Tell me what it's about."
+        guard !names.isEmpty else { return base }
+        if names.count == 1 { return base + " Or is it \(names[0])?" }
+        let items = names.enumerated().map { "\($0.offset + 1), \($0.element)" }
+        return base + " Or pick one: " + items.dropLast().joined(separator: ". ") + ". Or " + items.last! + "."
+    }
+
+    enum ClarifyResult {
+        /// `how`: "picked" (an offered chat, by voice or number) or "confirmed" (yes to "Send it to ...?").
+        case picked(ChatTarget, how: String)
+        case cancelled(String)
+        /// He did not answer: the message is kept unsent.
+        case unanswered
+    }
+
+    /// "Which chat?" as a conversation with no round limit (HM-1408): keeps his message and every
+    /// question and answer; after each answer every chat is searched again by meaning and by the
+    /// on-device model, with the whole conversation. One clear fit: "Send it to ...?". Unclear:
+    /// "Which chat then?". Only an explicit stop (the model reads it), Escape twice, or silence
+    /// ends it without a chat. Pressing 1 to 4 picks an offered chat. `all`: every target.
+    /// `test`: the clarify-test hook (muted, file input). Returns the turns for the history.
+    func askWhichChat(_ options: [ChatTarget], heardName: String, message: String, all: [ChatTarget] = [], test: Request? = nil,
+                      heard: ((String) -> Void)? = nil) async -> (ClarifyResult, [Turn]) {
+        let everyone = options + all.filter { a in !options.contains { $0.key == a.key } }
+        let allNames = everyone.map { Self.short($0.title) }
+        var convo = ClarifyConversation(message: message, offered: Array(options.indices))
+        var turns: [Turn] = []
+        var question = Self.whichChatQuestion(options.map { Self.short($0.title) }, heardName: heardName, again: false)
+        while true {
+            convo.asked(question)
+            turns.append(Turn(role: .agent, text: question))
+            let offeredNames = convo.offered.map { allNames[$0] }
+            let answer = await Conductor.shared.voiceClarify(question, choices: offeredNames.count, test: test)
+            if Conductor.shared.clarifyEscaped {
+                Isolation.note("clarify: Escape twice -> cancel")
+                return (.cancelled("Escape pressed twice"), turns)
             }
-            Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(pick.map { everyone[$0].title } ?? "unclear")")
-            if let pick { return (everyone[pick], false) }
+            guard let answer, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                Isolation.note("clarify: no answer -> kept unsent")
+                return (.unanswered, turns)
+            }
+            heard?(answer)
+            let number = Int(answer.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { convo.offered.indices.contains($0 - 1) ? $0 : nil }
+            turns.append(Turn(role: .user, text: number.map { "Pressed \($0)" } ?? answer))
+            let wasConfirming = convo.confirming != nil
+            var reading = ClarifyConversation.Reading()
+            var byName: Int?
+            if number == nil {
+                convo.answered(answer)
+                let clean = ChoicePick.stripEcho(answer, question: question, names: offeredNames)
+                byName = ChoicePick.name(clean, names: allNames)
+                // The on-device model reads it with the whole conversation; without one, the names do.
+                reading = await ModelRouter.shared.converse(convo, chats: everyone) ?? ClarifyConversation.Reading(chat: byName)
+            }
+            let meaning = MeaningIndex.shared.rank(convo.searchText(about: reading.about), everyone)
+            let step = convo.next(reading, pressed: number, meaning: meaning.scores, byName: byName)
+            Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(step); meaning \(Meaning.describe(meaning.scores)); name \(byName.map { String($0 + 1) } ?? "-")")
+            switch step {
+            case .send(let i): return (.picked(everyone[i], how: wasConfirming ? "confirmed" : "picked"), turns)
+            case .cancel: return (.cancelled("He said not to send it"), turns)
+            case .confirm(let i): question = "Send it to \(allNames[i])?"
+            case .ask(let idx): question = Self.followUpQuestion(idx.map { allNames[$0] })
+            }
         }
-        return (nil, false)
     }
 
     /// Test hook: needs-you clarify-test --title "recipebox|orchard" --vad-file <wav> [--mute].
@@ -126,18 +159,15 @@ final class VoiceCommands: ObservableObject {
         let options = names.enumerated().map { ChatTarget(kind: .registered, id: "test-\($0.offset)", title: $0.element, aliases: [], focused: false) }
         var t = req; t.mute = true
         var answers: [String] = []
-        let (pick, escaped) = await askWhichChat(options, heardName: "", test: t) { answers.append($0) }
+        let (result, _) = await askWhichChat(options, heardName: "", message: "test", test: t) { answers.append($0) }
         var r = Response(status: "measured")
         r.transcript = answers.joined(separator: " | ")
-        r.state = pick.map { "picked \($0.title)" } ?? (escaped ? "escaped" : "unclear")
+        switch result {
+        case .picked(let p, let how): r.state = "\(how) \(p.title)"
+        case .cancelled(let why): r.state = "cancelled: \(why)"
+        case .unanswered: r.state = "unanswered"
+        }
         return r
-    }
-
-    /// The name he said in front of the message, from the routing log ('heard "orchard": ...').
-    static func heardName(_ log: String?) -> String? {
-        guard let log, log.hasPrefix("heard \""), let end = log.dropFirst(7).firstIndex(of: "\"") else { return nil }
-        let name = String(log[log.index(log.startIndex, offsetBy: 7)..<end])
-        return name.isEmpty ? nil : name
     }
 
     func setUp() {
@@ -202,7 +232,16 @@ final class VoiceCommands: ObservableObject {
     /// Runs the mic only when nothing else is using it, so it never hears Needs You itself.
     func refresh() {
         guard enabled || oneShot else { stopListening("Off"); return }
-        guard WakeListener.authorized else { stopListening("Speech Recognition is not allowed"); return }
+        guard WakeListener.authorized else {
+            stopListening("Speech Recognition is not allowed")
+            PermissionSettings.needs(.speechRecognition) // HM-1405: only once it was denied, not before the first ask
+            return
+        }
+        if [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .audio)) {
+            stopListening("Microphone access is off")
+            PermissionSettings.needs(.microphone)
+            return
+        }
         guard listener.supportsOnDevice else { stopListening("On-device speech recognition is not available"); return }
         if Conductor.shared.micInUse || handling {
             if !(handling && countdown != nil) { stopListening("Paused while Needs You is talking") }
@@ -424,6 +463,7 @@ final class VoiceCommands: ObservableObject {
 
     /// Test hook and second half of `handle`: route a transcript, count down on the island, deliver.
     func route(_ transcript: String, dryRun: Bool, testOnly requested: Bool = false, forced: ChatTarget? = nil) async -> Response {
+        // Every return below records the command in the history (HM-1408), dry runs aside.
         // Fail closed: once a test pane was armed, live voice commands go only to
         // armed panes, even after the lock expired (then nothing is sent) until
         // `needs-you wake-test --arm-pane none` ends the test. An expired lock once
@@ -436,7 +476,6 @@ final class VoiceCommands: ObservableObject {
             let why = Router.armedPanes.isEmpty
                 ? "Not sent: tests need exactly one armed test pane (needs-you wake-test --arm-pane <pane>)."
                 : "Not sent: the test lock expired or its pane is not a test pane. Re-arm it, or end the test with needs-you wake-test --arm-pane none."
-            if requested { return errorResponse(why) }
             return record(nil, text: "", transcript: transcript, outcome: .error, error: why)
         }
         // A message kept after "which chat?" got no clear answer: "Hey Claude, orchard" (or "two") sends it.
@@ -473,6 +512,9 @@ final class VoiceCommands: ObservableObject {
             }
         }
 
+        // How the chat was found, saved with the message when it goes out (HM-1408).
+        var matchedBy = forced != nil ? "kept" : Router.lastReading?.intent?.named.isEmpty == false ? "named" : "routed"
+        var clarifyTurns: [Turn] = []
         if case .choose(let options, let text, let heard) = parsed {
             if options.isEmpty {
                 // He named something no chat matches (HM-1383): say so, never send it elsewhere.
@@ -481,27 +523,26 @@ final class VoiceCommands: ObservableObject {
                     Sounds.shared.play(.cancelled)
                     await Conductor.shared.speakOnly(why + (heard.isEmpty ? " Connect one in Settings, Agents." : " Connect it in Settings, Agents, or say new chat in \(heard)."))
                 }
-                return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: why)
+                return record(nil, text: text, transcript: transcript, outcome: .notSent,
+                              error: heard.isEmpty ? "no chat open" : "not found: no chat called \u{201C}\(heard)\u{201D}")
             }
-            else {
-                let (pick, escaped) = await askWhichChat(options, heardName: heard, all: targets)
-                if let pick {
-                    if let rest = Wake.afterWakeWord(transcript) {
-                        RoutingMemoryStore.shared.remember(words: RoutingMemory.words(rest: rest, heardName: heard), target: pick, source: "asked")
-                    }
-                    parsed = .send(pick, text)
-                } else if escaped {
-                    Sounds.shared.play(.cancelled)
-                    await Conductor.shared.speakOnly("Okay, I didn't send it.")
-                    return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: "No chat chosen")
-                } else {
-                    // Never drop it: it waits for "Hey Claude, <chat>" (or a number) for 5 minutes.
-                    unsent = Unsent(text: text, options: options, at: Date())
-                    Sounds.shared.play(.cancelled)
-                    Island.shared.error("Not sent", "Say the chat: \u{201C}\(Wake.phrase), \(Self.short(options[0].title))\u{201D}")
-                    await Conductor.shared.speakOnly("I kept your message. Say \(Wake.phrase) and the chat's name to send it.")
-                    return record(nil, text: text, transcript: transcript, outcome: .error, error: "No chat chosen; message kept for 5 minutes")
-                }
+            let (result, turns) = await askWhichChat(options, heardName: heard, message: text, all: targets)
+            clarifyTurns = turns
+            switch result {
+            case .picked(let pick, let h):
+                matchedBy = h
+                parsed = .send(pick, text)
+            case .cancelled(let why):
+                Sounds.shared.play(.cancelled)
+                await Conductor.shared.speakOnly("Okay, I didn't send it.")
+                return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: why, turns: turns)
+            case .unanswered:
+                // Never drop it: it waits for "Hey Claude, <chat>" (or a number) for 5 minutes.
+                unsent = Unsent(text: text, options: options, at: Date())
+                Sounds.shared.play(.cancelled)
+                Island.shared.error("Not sent", "Say the chat: \u{201C}\(Wake.phrase), \(Self.short(options[0].title))\u{201D}")
+                await Conductor.shared.speakOnly("I kept your message. Say \(Wake.phrase) and the chat's name to send it.")
+                return record(nil, text: text, transcript: transcript, outcome: .notSent, error: "no chat chosen; kept for 5 minutes", turns: turns)
             }
         }
 
@@ -513,9 +554,9 @@ final class VoiceCommands: ObservableObject {
         case .nothing(let why):
             Sounds.shared.play(.cancelled)
             Island.shared.error("Not sent", Island.oneLine(why))
-            return record(nil, text: "", transcript: transcript, outcome: .cancelled, error: why)
-        case .choose:
-            return errorResponse("unreachable")
+            return record(nil, text: "", transcript: transcript, outcome: .notSent, error: why)
+        case .choose(_, let m, _):
+            return record(nil, text: m, transcript: transcript, outcome: .error, error: "no chat chosen")
         case .newChat(let heardProject, let heardText):
             return await newChat(project: heardProject, heardText: heardText, transcript: transcript, dryRun: dryRun, testOnly: testOnly)
         case .app(let app, let heardText, let fresh):
@@ -529,7 +570,7 @@ final class VoiceCommands: ObservableObject {
             let go = await countDown(to: Self.short(target.title))
             if !go {
                 Sounds.shared.play(.cancelled)
-                return record(target, text: text, transcript: transcript, outcome: .cancelled, error: nil)
+                return record(target, text: text, transcript: transcript, outcome: .cancelled, error: nil, turns: clarifyTurns)
             }
             // A chat app without Needs You can't answer out loud: no voice line, and it stays in front.
             // One with it gets this Mac's name, so only this Mac speaks the reply (HM-1398).
@@ -538,14 +579,13 @@ final class VoiceCommands: ObservableObject {
             do {
                 let how = try await Router.deliver(delivered, to: target, stayInFront: quietApp)
                 Sounds.shared.play(.sent)
-                if let name = Self.heardName(routeLog) {
-                    RoutingMemoryStore.shared.remember(words: RoutingMemory.words(rest: name), target: target, source: "sent")
-                }
+                // Every message that found its chat is learned: messages like it lean to that chat (HM-1408).
+                if !testOnly { RouteLearningStore.shared.learn(heardText, target: target, source: target.byFocus ? "front" : matchedBy) }
                 if case .queued(let why) = how {
                     // Busy, or a typing check failed (HM-1374): waits in the chat's inbox for its next hook or inbox call (HM-1364).
                     // History says "Queued" until the chat really takes it.
                     Isolation.note("queued for \(target.title): \(why)")
-                    var r = record(target, text: delivered, transcript: transcript, outcome: .queued, error: nil)
+                    var r = record(target, text: delivered, transcript: transcript, outcome: .queued, error: nil, turns: clarifyTurns)
                     ChatRegistry.shared.enqueue(delivered, for: target.id, convoID: r.conversationID)
                     ChatRegistry.shared.spokeTo(target.id)
                     Island.shared.queued(for: Self.short(target.title))
@@ -554,11 +594,11 @@ final class VoiceCommands: ObservableObject {
                     return r
                 }
                 // Typed (HM-1374): AXDelivery already put his app, window, field and clipboard back.
-                return record(target, text: delivered, transcript: transcript, outcome: .sent, error: nil)
+                return record(target, text: delivered, transcript: transcript, outcome: .sent, error: nil, turns: clarifyTurns)
             } catch {
                 Sounds.shared.play(.cancelled)
                 Island.shared.error("Not sent", Island.oneLine(error.localizedDescription))
-                return record(target, text: text, transcript: transcript, outcome: .error, error: error.localizedDescription)
+                return record(target, text: text, transcript: transcript, outcome: .error, error: error.localizedDescription, turns: clarifyTurns)
             }
         }
     }
@@ -607,7 +647,7 @@ final class VoiceCommands: ObservableObject {
 
     /// "Hey Claude, new chat in <project>: ..." or nothing matched: open a new claude chat in herdr.
     private func newChat(project: String?, heardText: String, transcript: String, dryRun: Bool, testOnly: Bool) async -> Response {
-        if testOnly && Router.testRoot == nil { return errorResponse("New-chat tests need --projects-root <throwaway folder>.") }
+        if testOnly && Router.testRoot == nil { return record(nil, text: heardText, transcript: transcript, outcome: .error, error: "New-chat tests need --projects-root <throwaway folder>.") }
         let text = await TranscriptCleaner.clean(heardText)
         let home = testOnly ? Router.testRoot! : NSHomeDirectory()
         let projectsRoot = testOnly ? Router.testRoot! : NSHomeDirectory() + "/Projects"
@@ -627,7 +667,7 @@ final class VoiceCommands: ObservableObject {
                 } else {
                     Sounds.shared.play(.cancelled)
                     await Conductor.shared.speakOnly("Okay, I didn't start a chat.")
-                    return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: "No project chosen")
+                    return record(nil, text: text, transcript: transcript, outcome: .notSent, error: "no project chosen")
                 }
             } else {
                 missing = p
@@ -739,7 +779,7 @@ final class VoiceCommands: ObservableObject {
         title.split(separator: " ").prefix(6).joined(separator: " ")
     }
 
-    private func record(_ target: ChatTarget?, text: String, transcript: String, outcome: Conversation.Outcome, error: String?) -> Response {
+    private func record(_ target: ChatTarget?, text: String, transcript: String, outcome: Conversation.Outcome, error: String?, turns: [Turn] = []) -> Response {
         var c = Conversation(id: "send-" + UUID().uuidString.prefix(8).lowercased(),
                              title: target.map { "To \($0.title)" } ?? "Hey Claude",
                              message: text.isEmpty ? transcript : text, startedAt: Date())
@@ -755,7 +795,8 @@ final class VoiceCommands: ObservableObject {
             case .herdrPane: break
             }
         }
-        c.turns = [Turn(role: .user, text: text.isEmpty ? transcript : text, original: transcript)]
+        // His command, then the "which chat?" conversation, if there was one (HM-1408).
+        c.turns = [Turn(role: .user, text: text.isEmpty ? transcript : text, original: transcript)] + turns
         c.outcome = outcome
         c.error = error
         c.endedAt = Date()

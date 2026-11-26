@@ -221,7 +221,9 @@ extension Conversation {
         case .noAnswer: return "No answer"
         case .error: return "Error"
         case .sent: return "Sent"
-        case .cancelled: return "Not sent"
+        case .cancelled: return "Cancelled"
+        // A voice command that went nowhere (HM-1408): why, in a few words.
+        case .notSent: return error.map { "Not sent: " + $0 } ?? "Not sent"
         case .queued: return "Queued"
         case .delivered: return "Delivered"
         }

@@ -49,7 +49,10 @@ enum AXDelivery {
         let text = text0.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
         var t = target
         let t0 = Date()
-        guard AXIsProcessTrusted() else { return .notTyped("Needs You has no Accessibility access") }
+        guard AXIsProcessTrusted() else {
+            if !dryRun { PermissionSettings.needs(.accessibility) } // HM-1405
+            return .notTyped("Needs You has no Accessibility access")
+        }
 
         // 1. Where is it: the app, then the window and tab.
         var muxRestore: (() async -> Void)?

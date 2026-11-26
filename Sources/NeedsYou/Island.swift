@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import NeedsYouShared
 import SwiftUI
 
 /// The status island at the top of the screen (HM-1350): one pure black shape that
@@ -263,8 +264,10 @@ final class Island: ObservableObject {
     private func area(_ m: Mode) -> CGFloat { let b = Self.base[m]!; return b.w * b.h }
 
     private func go(_ next: Mode, retrigger: Bool = false) {
+        // Same state again: keep its timer. Cancelling it here (before this guard) left
+        // a state with no way out, e.g. "thinking" set twice never folded back (HM-1410).
+        guard next != mode || retrigger else { if next != .idle { show() }; return }
         pending?.cancel(); pending = nil
-        guard next != mode || retrigger else { return }
         if next != .idle { hideTask?.cancel(); hideTask = nil; show() }
         let grow = area(next) >= area(mode)
         let anim: Animation = reduceMotion ? .timingCurve(0.2, 0.8, 0.2, 1, duration: 0.22)
@@ -302,19 +305,39 @@ final class Island: ObservableObject {
 
     // MARK: Panel
 
+    /// Puts the panel on screen, placed from the screen every time (HM-1410): the
+    /// mouse's screen when it appears, its own screen while it stays up.
     private func show() {
         let p = panel ?? makePanel()
-        guard !p.isVisible else { return }
-        reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let appearing = !p.isVisible
+        if appearing { reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
         let mouse = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main else { return }
+        let mouseScreen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) })
+        guard let screen = (appearing ? mouseScreen : p.screen ?? mouseScreen) ?? NSScreen.main else { return }
+        place(p, on: screen)
+        if appearing { p.orderFrontRegardless() }
+    }
+
+    private func place(_ p: IslandPanel, on screen: NSScreen) {
         let (g, centerX) = Self.geometry(for: screen, style: Style.current)
-        var t = Transaction(); t.disablesAnimations = true
-        withTransaction(t) { geo = g }
-        let size = NSSize(width: 640, height: g.topInset + 150)
-        p.setFrame(NSRect(x: centerX - size.width / 2, y: screen.frame.maxY - size.height, width: size.width, height: size.height), display: true)
-        p.contentView?.layoutSubtreeIfNeeded()
-        p.orderFrontRegardless()
+        if g != geo {
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { geo = g }
+        }
+        let f = IslandLayout.panelFrame(screen: screen.frame, centerX: centerX,
+                                        size: CGSize(width: 640, height: g.topInset + 150), scale: screen.backingScaleFactor)
+        if p.frame != f {
+            p.setFrame(f, display: true)
+            p.contentView?.layoutSubtreeIfNeeded()
+        }
+    }
+
+    /// Screens added, removed, rearranged or rescaled: place it again.
+    @objc private func screensChanged() {
+        guard let p = panel, p.isVisible else { return }
+        let mouse = NSEvent.mouseLocation
+        guard let screen = p.screen ?? NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main else { return }
+        place(p, on: screen)
     }
 
     static func geometry(for screen: NSScreen, style: Style) -> (Geometry, CGFloat) {
@@ -324,9 +347,10 @@ final class Island: ObservableObject {
         let menuBar = f.maxY - screen.visibleFrame.maxY
         var g = Geometry()
         var centerX = f.midX
-        if hw, let l = screen.auxiliaryTopLeftArea, let r = screen.auxiliaryTopRightArea {
-            g.notchWidth = max(120, f.width - l.width - r.width)
-            centerX = f.minX + l.width + g.notchWidth / 2
+        if hw, let n = IslandLayout.notch(screen: f, leftArea: screen.auxiliaryTopLeftArea,
+                                          rightArea: screen.auxiliaryTopRightArea, scale: screen.backingScaleFactor) {
+            g.notchWidth = n.width
+            centerX = n.centerX
         }
         g.notch = notchStyle
         g.hardwareNotch = hw && notchStyle
@@ -348,6 +372,11 @@ final class Island: ObservableObject {
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         p.hidesOnDeactivate = false
         p.isReleasedWhenClosed = false
+        // No AppKit show/hide animation (HM-1410). Its scale-and-fade drew a snapshot of
+        // the panel at 98 % size: the pill sat a few pixels off, and when the panel came
+        // back during a hide it stayed frozen on the old picture ("Claude Code in …",
+        // an empty ring) while the real states (speaking, listening) never showed.
+        p.animationBehavior = .none
         p.setAccessibilityRole(.group)
         p.setAccessibilityLabel("Needs You status")
         let host = NSHostingView(rootView: IslandView(model: self))
@@ -355,6 +384,8 @@ final class Island: ObservableObject {
         p.contentView = host
         host.layoutSubtreeIfNeeded()
         panel = p
+        NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
+                                               name: NSApplication.didChangeScreenParametersNotification, object: nil)
         return p
     }
 

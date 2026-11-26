@@ -94,7 +94,7 @@ import FoundationModels
         targets.enumerated().map { i, t in
             var parts = ["\(i + 1). \(t.title)"]
             if !t.folder.isEmpty { parts.append("folder: \(t.folder)") }
-            if !t.detail.isEmpty, t.detail != t.title { parts.append("working on: \(String(t.detail.prefix(140)))") }
+            if !t.detail.isEmpty, t.detail != t.title { parts.append("working on: \(String(t.detail.prefix(200)))") }
             if t.kind == .desktop {
                 parts.append(t.appChat == nil ? "a chat app; can start a new chat" : "an earlier chat in \(Router.runningChatApps().first { $0.bundle == t.id }?.title ?? "a chat app") (opens it)")
             }
@@ -108,9 +108,9 @@ import FoundationModels
     @Generable struct Intent {
         @Guide(description: "What he wants", .anyOf(["send", "new_chat", "away", "good_night", "back", "voicemails", "summary", "list_chats", "nothing"]))
         var action: String
-        @Guide(description: "For send or new_chat: the number of the chat or app it is for, or 0 when no listed chat clearly fits")
+        @Guide(description: "For send or new_chat: the number of the chat the message is about or names (compare it with each chat's title, folder and working on), or 0 when no listed chat clearly fits")
         var chat: Int
-        @Guide(description: "The words he used to name a chat, app, project or folder, exactly as he said them; empty when he named none")
+        @Guide(description: "The words he used to call a chat, app, project or folder by its name, copied word for word from what he said (never from the chat list), like X in 'send it to the X chat' or 'X: ...'. What the message talks about is not a name. Empty when he named none")
         var named: String
         @Guide(description: "true only when he points at the chat in front of him instead of naming one or saying what it is about")
         var meansChatInFront: Bool
@@ -129,6 +129,20 @@ import FoundationModels
     }
 
     @available(macOS 26, *)
+    @Generable struct ClarifyAnswer {
+        @Guide(description: "true only when he clearly says to stop, cancel, forget it or not send the message at all. Saying none of these chats, no, or pointing at another chat is NOT cancel")
+        var cancel: Bool
+        @Guide(description: "When your last question was 'Send it to ...?': yes, no, or unclear. Otherwise unclear", .anyOf(["yes", "no", "unclear"]))
+        var answer: String
+        @Guide(description: "true when he says none of the chats you offered last is the right one")
+        var noneOfThese: Bool
+        @Guide(description: "The number of the chat he means now (by its number, its name, or what he says it is about), or 0 when it is unclear")
+        var chat: Int
+        @Guide(description: "What he says the chat he means is about or works on, in his words; empty when he said nothing about it")
+        var about: String
+    }
+
+    @available(macOS 26, *)
     private static func session() -> LanguageModelSession {
         LanguageModelSession(instructions: """
             The user talks to his Mac after a wake phrase. Decide what he wants:
@@ -138,9 +152,10 @@ import FoundationModels
             back: he is back, or it is morning. voicemails: he wants his waiting voice messages played.
             summary: he asks what was done while he was away. list_chats: he asks which chats are open.
             nothing: none of these.
-            For send, pick the chat by the name, project, folder or app he says, or by what the message is about \
-            (a chat whose title or "working on" matches). Answer 0 when he names no chat and the topic fits none clearly. \
-            Never pick a chat only because it was used last.
+            For send, pick the chat by the name, project, folder or app he says, or else by what the message is ABOUT: \
+            the chat whose title, folder or "working on" is about the same thing as his message. \
+            Answer 0 when he names no chat and the message is about none of them clearly. \
+            Never pick a chat only because it was used last. "named" is only words he said himself.
             """)
     }
     #endif
@@ -174,15 +189,51 @@ import FoundationModels
         return nil
     }
 
+    /// One answer in the "which chat?" conversation (HM-1408), read with the whole
+    /// conversation and every chat. nil when there is no model.
+    func converse(_ convo: ClarifyConversation, chats: [ChatTarget]) async -> ClarifyConversation.Reading? {
+        #if canImport(FoundationModels)
+        if #available(macOS 26, *), Self.available, !chats.isEmpty {
+            let offered = convo.offered.map { String($0 + 1) }.joined(separator: ", ")
+            let prompt = """
+                His chats:
+                \(Self.describe(chats))
+
+                \(convo.transcript)
+
+                The chats you offered last: \(offered.isEmpty ? "none" : offered).
+                The microphone may have heard your own question before his answer; only his words count.
+                """
+            do {
+                let s = LanguageModelSession(instructions: """
+                    You help the user send a voice message to the right AI chat. You asked him which chat it is for, \
+                    and you keep talking until it is clear. Read his last answer with the whole conversation: \
+                    which chat he means (by number, name, or what it is about), whether he said yes or no to your last question, \
+                    and whether he wants to stop. "None of them" or pointing at another chat is never stop.
+                    """)
+                let r = try await s.respond(to: prompt, generating: ClarifyAnswer.self, options: GenerationOptions(sampling: .greedy))
+                let c = r.content
+                Isolation.note("model clarify: chat \(c.chat) \(c.answer)\(c.cancel ? " cancel" : "")\(c.noneOfThese ? " none-of-these" : "") about \u{201C}\(c.about)\u{201D}")
+                return ClarifyConversation.Reading(chat: (1...chats.count).contains(c.chat) ? c.chat - 1 : nil, cancel: c.cancel,
+                                                   yesNo: .init(rawValue: c.answer) ?? .unclear, noneOfThese: c.noneOfThese, about: c.about)
+            } catch {
+                Isolation.note("model clarify failed: \(error.localizedDescription)")
+                return nil
+            }
+        }
+        #endif
+        return nil
+    }
+
     private static func ask(_ rest: String, _ targets: [ChatTarget], warm: Any?) async -> VoiceIntent? {
         #if canImport(FoundationModels)
         if #available(macOS 26, *) {
             let start = Date()
             var prompt = "Chats:\n\(describe(targets))\n\n"
-            // His earlier picks, as examples (routing memory).
-            let ex = RoutingMemoryStore.shared.examples().compactMap { e -> String? in
+            // Earlier messages that found their chat, as examples (HM-1408).
+            let ex = RouteLearningStore.shared.examples(targets).compactMap { e -> String? in
                 guard let i = targets.firstIndex(where: { $0.memoryKey == e.key }) else { return nil }
-                return "\u{201C}\(e.words)\u{201D} meant chat \(i + 1)"
+                return "\u{201C}\(e.text)\u{201D} went to chat \(i + 1)"
             }
             if !ex.isEmpty { prompt += "Earlier:\n" + ex.joined(separator: "\n") + "\n\n" }
             prompt += "He said: \u{201C}\(rest)\u{201D}"

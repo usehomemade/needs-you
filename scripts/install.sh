@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds Needs You.app, signs it with your Apple Development identity (a
-# stable signature keeps the microphone grant across rebuilds), installs it to
+# Builds Needs You.app, signs it with the Needs You Developer ID certificate
+# (the one releases use, so permission grants survive rebuilds and updates), installs it to
 # ~/Applications, links the CLI into ~/.local/bin and downloads the local speech
 # models once.
 #

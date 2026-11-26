@@ -19,6 +19,7 @@ enum Hook {
         u.cwd = (json["cwd"] as? String) ?? (json["workspace_roots"] as? [String])?.first ?? FileManager.default.currentDirectoryPath
         u.pane = PaneRef.from(env: env)
         u.transcriptPath = json["transcript_path"] as? String
+        u.notificationType = json["notification_type"] as? String
         u.prompt = json["prompt"] as? String
         u.reply = (json["last_assistant_message"] as? String) ?? (json["last_agent_message"] as? String) ?? (event == "AgentResponse" ? json["text"] as? String : nil)
         if event == "SessionStart" || event == "SessionEnd" || event == "Notification" { u.prompt = nil }
@@ -31,7 +32,7 @@ enum Hook {
         // A Stop hook that already continued once must not loop: the app empties the inbox, so the next Stop finds nothing.
         let resp = Client.response(r, launch: false)
         let messages = resp?.messages ?? []
-        log("\(event) pid \(agent.pid) session \(u.sessionID ?? "-") subagent \(u.subagent == true) keys [\(json.keys.sorted().joined(separator: ","))] app \(resp == nil ? "down" : "ok") handed \(messages.count)")
+        log("\(event) pid \(agent.pid) session \(u.sessionID ?? "-") subagent \(u.subagent == true)\(u.notificationType.map { " type " + $0 } ?? "") keys [\(json.keys.sorted().joined(separator: ","))] app \(resp == nil ? "down" : "ok") handed \(messages.count)")
         guard let out = HookSetup.output(event: event, messages: messages, agent: u.agent),
               let data = try? JSONSerialization.data(withJSONObject: out, options: [.withoutEscapingSlashes]) else { exit(0) }
         FileHandle.standardOutput.write(data)

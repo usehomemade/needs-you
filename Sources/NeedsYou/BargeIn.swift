@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import NeedsYouShared
 import Speech
 
 /// Plays Needs You's voice and listens for "Stop, Claude" while it plays.
@@ -30,6 +31,18 @@ final class VoicePlayer {
         return heard.range(of: #"(?i)\bstop[\s,.!-]*"# + NSRegularExpression.escapedPattern(for: name) + #"\b"#, options: [.regularExpression, .diacriticInsensitive]) != nil
     }
     private var bareStopOK = false
+    private var spoken = ""
+
+    /// "Stop, Claude" from him: a stop phrase that is not the voice's own words leaking back.
+    private func heardStop(_ heard: String, fast: Bool) -> Bool {
+        let stop = Self.isStop(heard) || (bareStopOK && heard.range(of: Self.bareStopPattern, options: .regularExpression) != nil)
+        guard stop else { return false }
+        if SpokenEcho.isEcho(heard, spoken: spoken) {
+            Isolation.note("voice: stop phrase ignored, it is the spoken text\(fast ? " (fast)" : ""): \(heard)")
+            return false
+        }
+        return true
+    }
 
     private var engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
@@ -52,8 +65,10 @@ final class VoicePlayer {
         try file.read(into: buf)
         let total = Double(buf.frameLength) / file.processingFormat.sampleRate
 
-        let speaksStopPhrase = Self.isStop(text)
-        var detecting = listen && !speaksStopPhrase && WakeListener.authorized
+        // What is being said: the detector ignores words that come from it (HM-1410),
+        // so a line that contains "Stop, Claude" no longer turns the detector off.
+        spoken = text
+        var detecting = listen && WakeListener.authorized
         bareStopOK = text.range(of: #"(?i)\bstop"#, options: .regularExpression) == nil
         if detecting, #available(macOS 26, *), WakeListener.analyzerFormatCache == nil {
             // Hey Claude may be off: load the on-device model's format once.
@@ -129,8 +144,7 @@ final class VoicePlayer {
             let s = AnalyzerSession(format: aFormat, fast: true, log: { Isolation.note("voice detector: \($0)") }) { [weak self] heard in
                 if WakeListener.debug { Isolation.note("voice: detector heard: \(heard)") }
                 guard let self else { return }
-                if Self.isStop(heard)
-                    || (self.bareStopOK && heard.range(of: Self.bareStopPattern, options: .regularExpression) != nil) {
+                if self.heardStop(heard, fast: false) {
                     Isolation.note("voice: stop phrase heard")
                     self.end(true)
                 }
@@ -138,8 +152,7 @@ final class VoicePlayer {
             session = s
             do {
                 let f = FastStopDetector(matches: { [weak self] heard in
-                    Self.isStop(heard)
-                        || (self?.bareStopOK == true && heard.range(of: Self.bareStopPattern, options: .regularExpression) != nil)
+                    self?.heardStop(heard, fast: true) ?? false
                 }, onStop: { [weak self] heard in
                     Isolation.note("voice: stop phrase heard (fast: \(heard))")
                     self?.end(true)

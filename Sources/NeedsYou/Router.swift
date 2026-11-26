@@ -123,8 +123,9 @@ enum Router {
                        aliases: [],
                        focused: c.id == front?.id && used(c) > .distantPast,
                        label: "", folder: c.folder,
-                       // The status is the title already when the chat has no folder: say it once.
-                       detail: c.folder.isEmpty ? (c.prompts.last.map { "last asked: " + String($0.prefix(120)) } ?? "") : c.summary)
+                       // What it works on (HM-1408): the status, and the last prompt. With no folder the title is
+                       // the status's start already: the status is repeated only when it is longer than that.
+                       detail: c.folder.isEmpty && (c.status ?? "").count <= 40 ? (c.prompts.last.map { "last asked: " + String($0.prefix(120)) } ?? "") : c.summary)
         }
         return regs.isEmpty ? [] : regs + appTargets()
     }
@@ -224,26 +225,40 @@ enum Router {
         return Speech.isFillerOnly(text) ? "" : text
     }
 
-    /// The on-device model reads the command (HM-1399); `IntentJudge` checks its pick
-    /// against his words and his earlier picks. No phrase or pattern decides anything.
-    @MainActor static func parseSmart(_ transcript: String, targets: [ChatTarget], memory: ((String) -> String?)? = nil) async -> (Parsed, String) {
-        RoutingMemoryStore.shared.openKeys = Set(targets.map(\.memoryKey))
-        let memory = memory ?? { RoutingMemoryStore.shared.lookup($0) }
+    /// What the last routing saw (Router Debug, HM-1408).
+    struct Reading {
+        var intent: VoiceIntent?
+        var rawNamed: String
+        var evidence: RouteEvidence
+        var votes: [(vote: RouteLearning.Vote, index: Int)]
+        var lang: String
+    }
+    @MainActor static var lastReading: Reading?
+
+    /// The on-device model reads the command (HM-1399); `IntentJudge` checks its pick against
+    /// what the message means next to each chat, earlier matches like it, and his words (HM-1408).
+    /// No phrase or pattern decides anything.
+    @MainActor static func parseSmart(_ transcript: String, targets: [ChatTarget]) async -> (Parsed, String) {
         guard let rest = Wake.afterWakeWord(transcript) else { return (.nothing("No \"\(Wake.phrase)\" in what I heard."), "no wake phrase") }
         let candidates = targets.map(\.candidate)
         var intent = await ModelRouter.shared.pick(rest, targets)
-        if let i = intent { intent?.named = VoiceIntent.ownWords(i.named, in: rest) }
-        let named = intent?.named.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let mem = memory(RoutingMemory.words(rest: rest, heardName: named)).flatMap { key in targets.firstIndex { $0.memoryKey == key } }
-        let topic = ChatMatcher.topic(rest, candidates)
-        let clearTopic = ChatMatcher.topic(rest, candidates, minScore: 2)
+        let rawNamed = intent?.named ?? ""
+        // A name counts only when he said it, word for word (HM-1408).
+        if let i = intent { intent?.named = VoiceIntent.spokenName(i.named, in: rest) }
+        let meaning = MeaningIndex.shared.rank(rest, targets)
+        let votes = RouteLearningStore.shared.votes(meaning.vector, lang: meaning.lang, targets: targets)
         let recent = Array(targets.indices.filter { targets[$0].kind != .desktop }.prefix(3))
-        let (outcome, why) = IntentJudge.decide(intent, candidates, topic: topic, clearTopic: clearTopic, memory: mem, recent: recent, isProject: isProject)
+        let ev = RouteEvidence(topic: ChatMatcher.topic(rest, candidates), clearTopic: ChatMatcher.topic(rest, candidates, minScore: 2),
+                               meaning: meaning.scores, learned: votes.map { .init(index: $0.index, weight: $0.vote.weight) }, recent: recent)
+        lastReading = Reading(intent: intent, rawNamed: rawNamed, evidence: ev, votes: votes, lang: meaning.lang.rawValue)
+        let (outcome, why) = IntentJudge.decide(intent, candidates, ev, isProject: isProject)
         let text = clean(intent.flatMap { ModelRouter.trusted($0.message, in: rest) } ?? rest)
         let hasText = !text.isEmpty && !Speech.isFillerOnly(text)
         let modelNote = intent.map { "model: \($0.action.rawValue) \($0.chat.map { String($0 + 1) } ?? "-")\($0.named.isEmpty ? "" : " named \u{201C}\($0.named)\u{201D}")\($0.meansFront ? " (in front)" : "")" }
             ?? (ModelRouter.available ? "model: no answer" : "model: not available")
-        let log = [modelNote, topic.map { "topic \($0 + 1)" }, why].compactMap { $0 }.joined(separator: "; ")
+        let ignored = !rawNamed.isEmpty && (intent?.named ?? "").isEmpty ? "ignored name \u{201C}\(rawNamed.prefix(60))\u{201D} (not his words)" : nil
+        let learned = votes.isEmpty ? nil : "learned " + votes.prefix(3).map { String(format: "%d %.2f", $0.index + 1, $0.vote.weight) }.joined(separator: ", ")
+        let log = [modelNote, ignored, "meaning " + Meaning.describe(ev.meaning), learned, ev.topic.map { "topic \($0 + 1)" }, why].compactMap { $0 }.joined(separator: "; ")
         let noText: (Parsed, String) = (.nothing("There was no message to send."), log)
         switch outcome {
         case .nothing:
@@ -511,11 +526,16 @@ enum Router {
         let reg = ChatRegistry.shared
         AXDelivery.lastLog = []
         guard let c = reg.chats[id] else { return .queued("chat not found") }
-        guard c.state == .idle else { return .queued("it is busy") }
-        guard reg.queuedCount(id) == 0 else { return .queued("earlier messages still wait") }
-        switch await AXDelivery.send(text, to: axTarget(c), dryRun: dryRun) {
+        if case .queue(let why) = ChatInfo.typing(c.state) { return .queued(why) }
+        // Messages that waited (e.g. a typing check failed earlier) go in first, in the same prompt.
+        let earlier = reg.queued(id)
+        let all = (earlier + [text]).joined(separator: "\n\n")
+        switch await AXDelivery.send(dryRun ? text : all, to: axTarget(c), dryRun: dryRun) {
         case .typed(let app):
-            if !dryRun { reg.typedInto(id, ifUnchangedSince: c.lastActivity); reg.spokeTo(id) }
+            if !dryRun {
+                if !earlier.isEmpty { _ = reg.takeInbox(id, how: "typing with a new message") }
+                reg.typedInto(id, ifUnchangedSince: c.lastActivity); reg.spokeTo(id)
+            }
             return .typed(app)
         case .notTyped(let why):
             return .queued(why)

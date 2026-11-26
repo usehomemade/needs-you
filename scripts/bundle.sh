@@ -7,7 +7,8 @@
 #   VERSION=1.2.3               CFBundleShortVersionString (default: Info.plist)
 #   BUILD_NUMBER=42             CFBundleVersion (default: Info.plist)
 #   SIGN_IDENTITY=<sha1|name>   codesign identity, "-" for ad-hoc
-#                               (default: the first Apple Development identity)
+#                               (default: the Needs You Developer ID certificate,
+#                               the same one releases use; see AGENTS.md)
 #   TIMESTAMP=1                 secure timestamp (needed for notarization)
 #   FEED_URL=https://…          Sparkle appcast; without it the build has no
 #                               in-app updates (local builds)
@@ -18,8 +19,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 app=${OUT:-build/Needs You.app}
-identity=${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk '/Apple Development/ {print $2; exit}')}
-identity=${identity:--}
+# Local and release builds sign with the same Developer ID certificate, so macOS
+# keeps Accessibility, Microphone and Speech Recognition across updates and rebuilds.
+needs_you_cert=F5F5EF29141AD0A613C1B7AAEB2DE13D432068A2
+if [ -z "${SIGN_IDENTITY:-}" ]; then
+  security find-identity -v -p codesigning | grep -q "$needs_you_cert" || {
+    echo "The Needs You Developer ID certificate ($needs_you_cert) is not in your keychain." >&2
+    echo "Import MACOS_CERT_P12 (with MACOS_CERT_PASSWORD) from the team's secret store, or set SIGN_IDENTITY." >&2
+    exit 1
+  }
+fi
+identity=${SIGN_IDENTITY:-$needs_you_cert}
 ts=--timestamp=none
 [ "${TIMESTAMP:-0}" = 1 ] && ts=--timestamp
 

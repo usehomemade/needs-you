@@ -27,20 +27,76 @@ public struct VoiceIntent: Equatable, Sendable {
 }
 
 extension VoiceIntent {
-    /// The model sometimes hands back a chat's full title, or his whole sentence, as "the name
-    /// he said". Only his own words count, and a "name" that is most of the sentence is none.
-    public static func ownWords(_ named: String, in rest: String) -> String {
-        let said = ChatMatcher.words(rest)
-        let kept = ChatMatcher.words(named).filter { Set(said).contains($0) }
-        guard !kept.isEmpty, Double(kept.count) < Double(said.count) * 0.8 else { return "" }
-        return kept.joined(separator: " ")
+    /// The model sometimes hands back a chat's title from the list, or a mix of his words and
+    /// the list ("Claude; working on: ..."), as "the name he said". A name counts only when it
+    /// is a phrase he really said, word for word (case and punctuation aside); a "name" that is
+    /// most of his sentence is none (HM-1408: no salvaging single words out of it).
+    public static func spokenName(_ named: String, in rest: String) -> String {
+        let n = ChatMatcher.words(named), said = ChatMatcher.words(rest)
+        guard !n.isEmpty, n.count < said.count, Double(n.count) < Double(said.count) * 0.8 else { return "" }
+        for start in 0...(said.count - n.count) where Array(said[start..<(start + n.count)]) == n {
+            return n.joined(separator: " ")
+        }
+        return ""
     }
 }
 
-/// Turns the model's reading into what happens. Never a guess (26 Nov): a message is
-/// sent only when the chat he named matches one chat, he pointed at the chat in front, or
-/// the model's pick agrees with the words he said (`topic`) or with what he picked before
-/// for the same words (`memory`). Everything else asks; a name that matches nothing says so.
+/// What points at a chat besides the model (HM-1408): the words he shares with a chat's
+/// names (`topic`), what the message means next to what each chat works on (`meaning`),
+/// and the chats earlier messages like it went to (`learned`).
+public struct RouteEvidence: Equatable, Sendable {
+    public struct Learned: Equatable, Sendable {
+        public var index: Int
+        public var weight: Double
+        public init(index: Int, weight: Double) { self.index = index; self.weight = weight }
+    }
+    /// Rare-word overlap with the chats' names and status: the leader, and a lead of two words or more.
+    public var topic: Int?
+    public var clearTopic: Int?
+    /// Every chat with something known about it, closest first.
+    public var meaning: [Meaning.Score]
+    /// Votes of earlier matches, strongest first.
+    public var learned: [Learned]
+    /// The chats to offer when nothing points anywhere (most recent first).
+    public var recent: [Int]
+
+    public init(topic: Int? = nil, clearTopic: Int? = nil, meaning: [Meaning.Score] = [], learned: [Learned] = [], recent: [Int] = []) {
+        self.topic = topic; self.clearTopic = clearTopic; self.meaning = meaning; self.learned = learned; self.recent = recent
+    }
+
+    public var meaningLead: Int? { Meaning.leader(meaning) }
+    public var meaningVeryClear: Int? { Meaning.veryClear(meaning) }
+    public var learnedLead: Int? { leader(RouteLearning.leadWeight) }
+    public var learnedVeryClear: Int? { leader(RouteLearning.veryClearWeight) }
+
+    private func leader(_ min: Double) -> Int? {
+        guard let best = learned.first, best.weight >= min else { return nil }
+        if learned.count > 1, learned[1].weight * 2 > best.weight { return nil }
+        return best.index
+    }
+
+    /// What backs chat `c` (empty when nothing does).
+    public func backing(_ c: Int) -> [String] {
+        var out: [String] = []
+        if c == meaningLead { out.append("meaning") }
+        if c == learnedLead { out.append("learned") }
+        if c == topic { out.append("topic") }
+        return out
+    }
+
+    /// The 3 closest by meaning first, then `extra`, then the recent chats; 4 at most.
+    public func offer(_ extra: [Int?]) -> [Int] {
+        var seen = Set<Int>(), out: [Int] = []
+        let close = meaning.filter { $0.sim >= Meaning.minSim }.prefix(3).map(\.index)
+        for i in close + extra.compactMap({ $0 }) + recent where seen.insert(i).inserted { out.append(i) }
+        return Array(out.prefix(4))
+    }
+}
+
+/// Turns the model's reading into what happens. Never a guess (26 Nov): a message is sent
+/// only when the chat he named matches one chat, he pointed at the chat in front, the model's
+/// pick agrees with meaning, learned votes or the words he said, or meaning and learned
+/// votes clearly agree with the model not disagreeing. Everything else asks, closest first.
 public enum IntentJudge {
     public enum Outcome: Equatable, Sendable {
         case send(Int, byFocus: Bool)
@@ -52,22 +108,22 @@ public enum IntentJudge {
         case nothing
     }
 
-    /// `topic`: the chat his words point to, enough to confirm the model's pick.
-    /// `clearTopic`: the same with at least two rare words shared, enough to send on its own.
-    /// `recent`: the chats to offer when nothing points anywhere (most recent first).
-    public static func decide(_ intent: VoiceIntent?, _ chats: [ChatCandidate], topic: Int?, clearTopic: Int? = nil, memory: Int?, recent: [Int],
+    /// `intent.named` must already be a phrase he said (`VoiceIntent.spokenName`).
+    public static func decide(_ intent: VoiceIntent?, _ chats: [ChatCandidate], _ ev: RouteEvidence,
                               isProject: (String) -> Bool = { _ in false }) -> (Outcome, String) {
-        func ask(_ first: [Int?], _ why: String, heard: String = "") -> (Outcome, String) {
-            var seen = Set<Int>(), out: [Int] = []
-            for i in (first.compactMap { $0 } + recent) where seen.insert(i).inserted { out.append(i) }
-            return (.ask(Array(out.prefix(4)), heard: heard), why)
+        func ask(_ extra: [Int?], _ why: String) -> (Outcome, String) { (.ask(ev.offer(extra), heard: ""), why) }
+        /// No model pick (or no model): the data decides only when it clearly agrees.
+        func dataOnly(_ prefix: String) -> (Outcome, String)? {
+            let m = ev.meaningLead, l = ev.learnedLead
+            if let m, m == l { return (.send(m, byFocus: false), prefix + "meaning and learned -> \(m)") }
+            if let m = ev.meaningVeryClear, l == nil || l == m, ev.topic == nil || ev.topic == m {
+                return (.send(m, byFocus: false), prefix + "meaning very clear -> \(m)")
+            }
+            if let v = ev.learnedVeryClear, m == nil || m == v { return (.send(v, byFocus: false), prefix + "learned very clear -> \(v)") }
+            if let t = ev.clearTopic, m == nil || m == t, l == nil || l == t { return (.send(t, byFocus: false), prefix + "clear topic -> \(t)") }
+            return nil
         }
-        // No model (not available, failed or too slow): only the data can send.
-        guard let i = intent else {
-            if let t = clearTopic { return (.send(t, byFocus: false), "no model; clear topic -> \(t)") }
-            if let m = memory { return (.send(m, byFocus: false), "no model; memory -> \(m)") }
-            return ask([], "no model -> ask")
-        }
+        guard let i = intent else { return dataOnly("no model; ") ?? ask([], "no model -> ask") }
         switch i.action {
         case .nothing: return (.nothing, "model: nothing to do")
         case .newChat: return (.newChat(named: i.named.trimmingCharacters(in: .whitespacesAndNewlines)), "model: new chat")
@@ -89,19 +145,17 @@ public enum IntentJudge {
                 return (.ask(out, heard: named), log + " -> ask")
             }
             if isProject(named) { return (.newChat(named: named), log + "; project folder -> new chat") }
-            // The model may have read part of the message as a name: its pick still counts
-            // when his words or his earlier picks back it.
-            if let c = i.chat, c == topic || c == memory { return (.send(c, byFocus: false), log + "; model \(c) agrees with topic/memory") }
+            // The model may have read part of the message as a name: its pick still counts when the data backs it.
+            if let c = i.chat, !ev.backing(c).isEmpty { return (.send(c, byFocus: false), log + "; model \(c) agrees with \(ev.backing(c).joined(separator: "+"))") }
             return (.notFound(named), log + "; no such chat")
         }
         let front = chats.firstIndex(where: { $0.isDesktop && $0.focused }) ?? chats.firstIndex(where: { $0.focused && !$0.isDesktop })
         if i.meansFront, let f = front, i.chat == nil || i.chat == f { return (.send(f, byFocus: true), "the chat in front -> \(f)") }
         if let c = i.chat {
-            if c == topic || c == memory { return (.send(c, byFocus: false), "model \(c) agrees with \(c == topic ? "topic" : "memory")") }
-            return ask([c, topic, memory], "model \(c), topic \(topic.map(String.init) ?? "-") -> ask")
+            let b = ev.backing(c)
+            if !b.isEmpty { return (.send(c, byFocus: false), "model \(c) agrees with \(b.joined(separator: "+"))") }
+            return ask([c, ev.learnedLead, ev.topic], "model \(c), meaning \(ev.meaningLead.map(String.init) ?? "-"), learned \(ev.learnedLead.map(String.init) ?? "-") -> ask")
         }
-        if let t = clearTopic { return (.send(t, byFocus: false), "clear topic -> \(t)") }
-        if let m = memory { return (.send(m, byFocus: false), "memory -> \(m)") }
-        return ask([], "no chat named or clear -> ask")
+        return dataOnly("") ?? ask([ev.learnedLead, ev.topic], "no chat named or clear -> ask")
     }
 }

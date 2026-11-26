@@ -212,6 +212,7 @@ final class Subtitles: ObservableObject {
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         p.hidesOnDeactivate = false
         p.isReleasedWhenClosed = false
+        p.animationBehavior = .none // no AppKit snapshot animation on show/hide (HM-1410)
         let root = NSView(frame: p.contentRect(forFrameRect: p.frame))
         root.wantsLayer = true
         let g = GlowView(frame: root.bounds)

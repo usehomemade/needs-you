@@ -318,6 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Island.shared.attach()
         VoiceCommands.shared.setUp()
         Hotkeys.shared.setUp()
+        PermissionSettings.launchCheck() // HM-1405
     }
 
     func applicationWillTerminate(_ notification: Notification) {

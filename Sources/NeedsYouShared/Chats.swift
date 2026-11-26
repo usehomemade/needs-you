@@ -44,6 +44,8 @@ public struct ChatUpdate: Codable, Equatable, Sendable {
     public var status: String?
     /// UserPromptSubmit: what was typed.
     public var prompt: String?
+    /// Notification: Claude Code's notification_type ("idle_prompt", "permission_prompt", "elicitation_dialog", ...).
+    public var notificationType: String?
     /// Stop: the agent's last reply (shortened).
     public var reply: String?
     public var transcriptPath: String?
@@ -55,7 +57,23 @@ public struct ChatUpdate: Codable, Equatable, Sendable {
 
 /// A chat Needs You can reach, built only from what its agent reported.
 public struct ChatInfo: Codable, Equatable, Identifiable, Sendable {
+    /// working: in the middle of its own turn. idle: at its prompt (its background subagents may
+    /// still run). waiting: a permission or question dialog is on screen. unknown: no hooks yet.
     public enum State: String, Codable, Sendable { case working, idle, waiting, unknown }
+
+    /// What to do with a voice message for a chat in this state (HM-1412): typed into its prompt
+    /// only when it is idle there; mid-turn it waits for the Stop hook, which hands it over as the
+    /// next prompt; a dialog on screen must never get typing (it would answer the dialog).
+    public enum Typing: Equatable, Sendable { case typeNow, queue(String) }
+
+    public static func typing(_ s: State) -> Typing {
+        switch s {
+        case .idle: return .typeNow
+        case .working: return .queue("it is in the middle of a turn")
+        case .waiting: return .queue("a permission or question is on its screen")
+        case .unknown: return .queue("it has not reported its state")
+        }
+    }
 
     /// "pid:<agent pid>": the same for the MCP server and the hooks of one agent.
     public var id: String
@@ -140,7 +158,21 @@ public struct ChatInfo: Codable, Equatable, Identifiable, Sendable {
         case "AgentResponse":
             // Cursor's afterAgentResponse: the reply text, before its stop hook.
             if let r = u.reply?.trimmingCharacters(in: .whitespacesAndNewlines), !r.isEmpty { lastReply = String(r.prefix(300)) }
-        case "Notification", "PermissionRequest": state = .waiting; lastActivity = now
+        case "PostToolUse", "PreToolUse":
+            // The main agent's own tool call: it is mid-turn (also after a permission was answered).
+            // Subagent hooks never get here (ChatRegistry drops them), so background subagents
+            // never make an idle chat look busy.
+            state = .working
+        case "Notification":
+            // idle_prompt: Claude Code's "still waiting for your input" reminder after a Stop;
+            // the chat is at its prompt, not busy (HM-1412).
+            switch u.notificationType {
+            case "idle_prompt": state = .idle
+            case "permission_prompt", "elicitation_dialog": state = .waiting; lastActivity = now
+            case nil, "": if state != .idle { state = .waiting; lastActivity = now } // older hook: an idle chat's note is the idle reminder
+            default: break // auth_success and others say nothing about the prompt
+            }
+        case "PermissionRequest": state = .waiting; lastActivity = now
         case "SessionStart": state = .idle; lastActivity = now
         case "status": lastActivity = now
         default: break
