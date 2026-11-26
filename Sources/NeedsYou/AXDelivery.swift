@@ -642,9 +642,12 @@ enum Mux {
         // The client that shows this pane's session (the most recently active one).
         let sess = sync(tmuxArgs(p, ["display-message", "-p", "-t", p.id, "#{session_name}"]))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !sess.isEmpty else { return nil }
-        let clients = (sync(tmuxArgs(p, ["list-clients", "-F", "#{client_activity} #{client_pid} #{client_tty} #{session_name}"])) ?? "")
-            .split(separator: "\n").map { $0.split(separator: " ").map(String.init) }.filter { $0.count >= 4 }
-            .sorted { (Int($0[0]) ?? 0) > (Int($1[0]) ?? 0) }
+        // Split up: in one expression the release build gave up type-checking it.
+        let listed: String = sync(tmuxArgs(p, ["list-clients", "-F", "#{client_activity} #{client_pid} #{client_tty} #{session_name}"])) ?? ""
+        let rows: [[String]] = listed.split(separator: "\n").map { (line: Substring) -> [String] in line.split(separator: " ").map(String.init) }
+        let clients: [[String]] = rows.filter { $0.count >= 4 }.sorted { (a: [String], b: [String]) -> Bool in
+            (Int(a[0]) ?? 0) > (Int(b[0]) ?? 0)
+        }
         guard let client = clients.first(where: { $0[3] == sess }) ?? clients.first else { return nil }
         let tty = client[2]
         let prev = sync(tmuxArgs(p, ["display-message", "-p", "-c", tty, "#{pane_id}"]))?.trimmingCharacters(in: .whitespacesAndNewlines)
