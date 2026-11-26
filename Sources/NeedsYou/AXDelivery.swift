@@ -62,6 +62,10 @@ enum AXDelivery {
             log("\(pane.kind.rawValue) pane \(pane.id) does not run the agent, ignored")
             t.pane = nil
         }
+        // HM-1415: a turned-off app is never typed into. A chat in a pane belongs to its multiplexer.
+        if let pane = t.pane, !ChatApps.isEnabled(ChatAppSwitches.muxID(pane.kind)) {
+            return .notTyped("\(pane.kind.rawValue) is turned off in Settings, Apps")
+        }
         if let pane = t.pane {
             guard let m = await Mux.focus(pane) else { return .notTyped("could not select its \(pane.kind.rawValue) pane") }
             muxRestore = m.restore
@@ -76,6 +80,9 @@ enum AXDelivery {
         guard let hostPid, let app = NSRunningApplication(processIdentifier: hostPid) else {
             await muxRestore?()
             return .notTyped("could not find the app that shows it")
+        }
+        if t.pane == nil, !ChatApps.isEnabled(app.bundleIdentifier) {
+            return .notTyped("\(app.localizedName ?? "its app") is turned off in Settings, Apps")
         }
         // Chromium-based apps (Electron, and apps like ChatGPT that rename the framework) build
         // their tree only when asked; native apps ignore the attribute.

@@ -25,6 +25,10 @@ struct ChatTarget: Hashable {
     var detail = ""
     /// A chat in a chat app's sidebar that is not open (HM-1389): opened before typing.
     var appChat: String? = nil
+    /// The app it belongs to (HM-1415): "herdr", "tmux" or a bundle id; nil when unknown.
+    var app: String? = nil
+    /// Its app is turned on in Settings, Apps.
+    var enabled: Bool { ChatApps.isEnabled(app) }
     /// Unique among targets (chat app chats share the app's bundle id).
     var key: String { id + (appChat.map { "#" + $0 } ?? "") }
 
@@ -60,9 +64,10 @@ enum Router {
     }
 
     /// Chat apps found on this Mac, running ones first: what "new chat on ..." can open.
-    static func installedApps() -> [ChatApp] {
+    static func installedApps(includeDisabled: Bool = false) -> [ChatApp] {
         let running = runningChatApps()
-        return running + AppDiscovery.known.filter { k in !running.contains { $0.bundle == k.bundle } }.map(chatApp)
+        let all = running + AppDiscovery.known.filter { k in !running.contains { $0.bundle == k.bundle } }.map(chatApp)
+        return includeDisabled ? all : all.filter { ChatApps.isEnabled($0.bundle) } // HM-1415
     }
 
     /// The app has the Needs You MCP server, so its chat can answer out loud. Without it
@@ -81,6 +86,7 @@ enum Router {
     static func appTargets() -> [ChatTarget] {
         runningChatApps().map { a in
             var t = ChatTarget(kind: .desktop, id: a.bundle, title: a.title, aliases: a.aliases, focused: false)
+            t.app = a.bundle
             t.detail = AXDelivery.openChatTitle(a.bundle) ?? "" // the chat open in it, for "what did it say about X"
             return t
         }
@@ -92,6 +98,7 @@ enum Router {
         apps.flatMap { app -> [ChatTarget] in
             (AXDelivery.scanApp(app.id)?.chats.map(\.title) ?? []).filter { $0.caseInsensitiveCompare(app.detail) != .orderedSame }.map { title in
                 var t = ChatTarget(kind: .desktop, id: app.id, title: title, aliases: [], focused: false)
+                t.app = app.id
                 t.detail = title
                 t.appChat = title
                 return t
@@ -119,13 +126,15 @@ enum Router {
         }
         let front = chats.max { used($0) < used($1) }
         let regs = chats.map { c in
-            ChatTarget(kind: .registered, id: c.id, title: c.displayName,
+            var t = ChatTarget(kind: .registered, id: c.id, title: c.displayName,
                        aliases: [],
                        focused: c.id == front?.id && used(c) > .distantPast,
                        label: "", folder: c.folder,
                        // What it works on (HM-1408): the status, and the last prompt. With no folder the title is
                        // the status's start already: the status is repeated only when it is longer than that.
                        detail: c.folder.isEmpty && (c.status ?? "").count <= 40 ? (c.prompts.last.map { "last asked: " + String($0.prefix(120)) } ?? "") : c.summary)
+            t.app = ChatApps.owner(c)?.id
+            return t
         }
         return regs.isEmpty ? [] : regs + appTargets()
     }
@@ -133,7 +142,14 @@ enum Router {
     /// Registered chats first, then herdr chats that never connected (started before Claude Code
     /// was connected, HM-1383: "send to the Game Boy terminal" must find them), then the chat apps.
     /// With nothing registered: the old herdr scan.
-    static func voiceTargets(testOnly: Bool = false) async -> [ChatTarget] {
+    /// Chats of apps turned off in Settings, Apps (HM-1415) are left out: never offered, never
+    /// matched, never learned from. `includeDisabled` is for Router Debug, which shows them greyed.
+    static func voiceTargets(testOnly: Bool = false, includeDisabled: Bool = false) async -> [ChatTarget] {
+        let all = await voiceTargetsAll(testOnly: testOnly)
+        return includeDisabled ? all : all.filter(\.enabled)
+    }
+
+    private static func voiceTargetsAll(testOnly: Bool) async -> [ChatTarget] {
         if !testOnly {
             let reg = await MainActor.run { registeredTargets() }
             if !reg.isEmpty {
@@ -141,21 +157,24 @@ enum Router {
                 let unconnected = await targetsAll().filter { $0.kind == .herdrAgent && !panes.contains($0.id) }
                     .map { t -> ChatTarget in var t = t; t.focused = false; return t } // "in front" means used last, among connected chats
                 let apps = reg.filter { $0.kind == .desktop }
-                return reg.filter { $0.kind != .desktop } + unconnected + apps + appChatTargets(apps)
+                return reg.filter { $0.kind != .desktop } + unconnected + apps + appChatTargets(apps.filter(\.enabled))
             }
         }
-        return await targets(testOnly: testOnly)
+        return await targets(testOnly: testOnly, includeDisabled: true)
     }
 
     /// Tests only ever see the panes they armed, never a real chat.
-    static func targets(testOnly: Bool = false) async -> [ChatTarget] {
+    static func targets(testOnly: Bool = false, includeDisabled: Bool = false) async -> [ChatTarget] {
+        let all = await targetsAll()
+        let out: [ChatTarget]
         if testOnly {
-            let all = await targetsAll()
             // A pane id herdr reused for a Claude chat is never a test pane.
             let agents = Set(all.filter { $0.kind == .herdrAgent }.map(\.id))
-            return all.filter { $0.kind == .herdrPane && !agents.contains($0.id) }
+            out = all.filter { $0.kind == .herdrPane && !agents.contains($0.id) }
+        } else {
+            out = all
         }
-        return await targetsAll()
+        return includeDisabled ? out : out.filter(\.enabled)
     }
 
     private static func targetsAll() async -> [ChatTarget] {
@@ -179,10 +198,12 @@ enum Router {
                 let label = labels[(a["tab_id"] as? String) ?? ""] ?? ""
                 var title = (a["terminal_title_stripped"] as? String) ?? (a["terminal_title"] as? String) ?? "Claude"
                 if title.isEmpty || title == "Claude Code" { title = folder.isEmpty ? "Claude Code" : "Claude Code in \(folder)" }
-                out.append(ChatTarget(kind: .herdrAgent, id: pane, title: title,
-                                      aliases: [folder, label].filter { !$0.isEmpty },
-                                      focused: (a["focused"] as? Bool) ?? false,
-                                      label: label, folder: cwd == NSHomeDirectory() ? "" : folder))
+                var t = ChatTarget(kind: .herdrAgent, id: pane, title: title,
+                                   aliases: [folder, label].filter { !$0.isEmpty },
+                                   focused: (a["focused"] as? Bool) ?? false,
+                                   label: label, folder: cwd == NSHomeDirectory() ? "" : folder)
+                t.app = ChatAppSwitches.muxID(.herdr)
+                out.append(t)
             }
         }
         let armed = await MainActor.run { armedPanes.filter { $0.value > Date() }.map(\.key) }
@@ -197,7 +218,9 @@ enum Router {
             if let tab = p["tab_id"] as? String, let l = labels[tab], !l.isEmpty { title = l }
             focused = (p["focused"] as? Bool) ?? false
             if focused { for i in out.indices { out[i].focused = false } }
-            out.append(ChatTarget(kind: .herdrPane, id: pane, title: title, aliases: ["test"], focused: focused))
+            var t = ChatTarget(kind: .herdrPane, id: pane, title: title, aliases: ["test"], focused: focused)
+            t.app = ChatAppSwitches.muxID(.herdr)
+            out.append(t)
         }
         out += appTargets()
         return out
@@ -352,6 +375,9 @@ enum Router {
 
     /// Opens a herdr tab in `dir`, starts claude there, and returns it once it is ready for input.
     static func startNewChat(in dir: String, label: String, focus: Bool = true) async throws -> ChatTarget {
+        guard ChatApps.isEnabled(ChatAppSwitches.muxID(.herdr)) else {
+            throw DeliveryError.failed("herdr is turned off in Settings, Apps.") // HM-1415
+        }
         // Tests never move the user's focus.
         let created = try await run([herdr, "tab", "create", "--cwd", dir, "--label", label] + (focus ? ["--focus"] : []), checkExit: true)
         guard let data = created.data(using: .utf8),
@@ -365,7 +391,9 @@ enum Router {
             try await Task.sleep(nanoseconds: 800_000_000)
             do {
                 _ = try await run([herdr, "agent", "start", name, "--kind", "claude", "--pane", pane, "--timeout", "60000"], checkExit: true)
-                return ChatTarget(kind: .herdrAgent, id: pane, title: label, aliases: [], focused: focus, fresh: true)
+                var t = ChatTarget(kind: .herdrAgent, id: pane, title: label, aliases: [], focused: focus, fresh: true)
+                t.app = ChatAppSwitches.muxID(.herdr)
+                return t
             } catch { lastError = error.localizedDescription }
         }
         throw DeliveryError.failed("Claude did not start in the new tab: \(lastError.prefix(160))")
@@ -375,6 +403,7 @@ enum Router {
     /// "New Chat" menu item (Cmd+N when it has none), and waits until the page is an
     /// empty new chat. Throws when that never shows, so nothing is typed into an old chat.
     @MainActor static func startAppChat(_ app: ChatApp) async throws -> ChatTarget {
+        guard ChatApps.isEnabled(app.bundle) else { throw DeliveryError.failed("\(app.title) is turned off in Settings, Apps.") } // HM-1415
         var running = NSRunningApplication.runningApplications(withBundleIdentifier: app.bundle).first
         if running == nil {
             guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundle) else {
@@ -404,7 +433,9 @@ enum Router {
         for _ in 0..<40 {
             try? await Task.sleep(nanoseconds: 100_000_000)
             if AXDelivery.desktopShowsNewSession(app.bundle) {
-                return ChatTarget(kind: .desktop, id: app.bundle, title: app.title, aliases: app.aliases, focused: true, fresh: true)
+                var t = ChatTarget(kind: .desktop, id: app.bundle, title: app.title, aliases: app.aliases, focused: true, fresh: true)
+                t.app = app.bundle
+                return t
             }
         }
         throw DeliveryError.failed("\(app.title) did not show a new chat.")

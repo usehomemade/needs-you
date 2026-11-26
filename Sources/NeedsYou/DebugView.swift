@@ -38,7 +38,8 @@ struct TargetsDebug: View {
     var body: some View {
         let connected = targets.filter { $0.kind == .registered }
         let herdr = targets.filter { $0.kind == .herdrAgent || $0.kind == .herdrPane }
-        let apps = Router.installedApps()
+        let apps = Router.installedApps(includeDisabled: true)
+        let off = targets.filter { !$0.enabled }.count
         List {
             Section("Status") {
                 LabeledContent("Accessibility", value: AXIsProcessTrusted() ? "Allowed" : "Not allowed: nothing can be typed")
@@ -46,21 +47,21 @@ struct TargetsDebug: View {
                     Button("Open Accessibility Settings\u{2026}") { PermissionSettings.open(.accessibility) }
                 }
                 LabeledContent("On-device model", value: ModelRouter.available ? "Available" : "Not available: the matcher routes alone")
-                LabeledContent("Router targets", value: "\(targets.count), read \(at.formatted(date: .omitted, time: .standard))")
+                LabeledContent("Router targets", value: "\(targets.count - off)\(off > 0 ? " (\(off) more turned off in Settings, Apps)" : ""), read \(at.formatted(date: .omitted, time: .standard))")
             }
             Section("Connected chats (\(connected.count))") {
                 if connected.isEmpty { Text("None. Turn on an agent in Settings, Agents.").foregroundStyle(.secondary) }
                 ForEach(connected, id: \.id) { t in
-                    TargetDebugRow(target: t, index: targets.firstIndex(of: t), chat: registry.chats[t.id])
+                    TargetDebugRow(target: t, index: targets.filter(\.enabled).firstIndex(of: t), chat: registry.chats[t.id])
                 }
             }
             Section("herdr chats, not connected (\(herdr.count))") {
                 if herdr.isEmpty { Text("None").foregroundStyle(.secondary) }
-                ForEach(herdr, id: \.id) { t in TargetDebugRow(target: t, index: targets.firstIndex(of: t), chat: nil) }
+                ForEach(herdr, id: \.id) { t in TargetDebugRow(target: t, index: targets.filter(\.enabled).firstIndex(of: t), chat: nil) }
             }
             Section("Chat apps and their sidebar chats (\(targets.filter { $0.kind == .desktop }.count))") {
                 ForEach(targets.filter { $0.kind == .desktop }, id: \.key) { t in
-                    TargetDebugRow(target: t, index: targets.firstIndex(of: t), chat: nil)
+                    TargetDebugRow(target: t, index: targets.filter(\.enabled).firstIndex(of: t), chat: nil)
                 }
             }
             Section("Chat apps installed") {
@@ -89,7 +90,7 @@ struct TargetsDebug: View {
 
     private func load() async {
         loading = true
-        targets = await Router.voiceTargets()
+        targets = await Router.voiceTargets(includeDisabled: true) // turned-off apps' chats are shown, greyed
         at = Date()
         loading = false
     }
@@ -109,6 +110,9 @@ struct TargetDebugRow: View {
                 HStack {
                     Text(target.title).fontWeight(.semibold).lineLimit(1)
                     if target.focused { Text("used last").font(.caption).foregroundStyle(.orange) }
+                    if !target.enabled {
+                        Text("\(ChatApps.displayName(target.app ?? "")) turned off: not a target").font(.caption).foregroundStyle(.red)
+                    }
                 }
                 Text(fields).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 if !target.detail.isEmpty, target.detail != target.title {
@@ -122,11 +126,13 @@ struct TargetDebugRow: View {
             }
         }
         .padding(.vertical, 2)
+        .opacity(target.enabled ? 1 : 0.5)
     }
 
     private var fields: String {
         var p = [String]()
         p.append("id " + target.id)
+        if let a = target.app { p.append("app " + a) }
         if !target.folder.isEmpty { p.append("folder " + target.folder) }
         if !target.label.isEmpty { p.append("tab " + target.label) }
         if let c = chat {

@@ -9,7 +9,7 @@ import SwiftUI
 /// title follows the pane and the last pane opens again next time.
 struct SettingsView: View {
     enum Pane: String, CaseIterable {
-        case general, permissions, heyClaude, voice, microphones, models, doNotDisturb, agents
+        case general, permissions, heyClaude, voice, microphones, models, doNotDisturb, agents, apps
     }
 
     @AppStorage("settingsPane") private var pane = Pane.general.rawValue
@@ -32,8 +32,10 @@ struct SettingsView: View {
                 .tabItem { Label("Do Not Disturb", systemImage: "moon") }.tag(Pane.doNotDisturb.rawValue)
             AgentsPane()
                 .tabItem { Label("Agents", systemImage: "terminal") }.tag(Pane.agents.rawValue)
+            AppsPane()
+                .tabItem { Label("Apps", systemImage: "square.grid.2x2") }.tag(Pane.apps.rawValue)
         }
-        .frame(width: 560)
+        .frame(width: 660) // nine panes fit the toolbar without an overflow menu
     }
 }
 
@@ -45,7 +47,7 @@ private struct Pane<Content: View>: View {
     var body: some View {
         Form { content }
             .formStyle(.grouped)
-            .frame(width: 560, height: height)
+            .frame(width: 660, height: height)
     }
 }
 
@@ -733,6 +735,69 @@ struct AgentsPane: View {
         if !s.imported { return "Not imported in CLAUDE.md" }
         if s.newDefaultWaiting { return "Edited, new default available" }
         return s.edited ? "Installed, edited by you" : "Installed, up to date"
+    }
+}
+
+// MARK: Apps (HM-1415)
+
+/// Which apps voice messages may go to: herdr, the terminals and editors chats run in, and
+/// the chat apps found on this Mac. A turned-off app's chats are never offered, chosen or typed into.
+struct AppsPane: View {
+    @ObservedObject private var registry = ChatRegistry.shared
+    @State private var apps: [ChatApps.App] = []
+    @State private var disabled: Set<String> = []
+
+    var body: some View {
+        Pane(height: 520) {
+            let hosts = apps.filter { $0.kind != .chatApp }
+            let chatApps = apps.filter { $0.kind == .chatApp }
+            Section {
+                if hosts.isEmpty { Text("None yet. Connect an agent in Agents; the apps its chats run in show up here.").foregroundStyle(.secondary) }
+                ForEach(hosts) { row($0) }
+            } header: {
+                Text("Terminals and Editors")
+            } footer: {
+                Text("A chat in a herdr or tmux pane follows that switch; any other chat follows the app it runs in.")
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                if chatApps.isEmpty { Text("None found. Apps with a chat list and a message field show up here once they run.").foregroundStyle(.secondary) }
+                ForEach(chatApps) { row($0) }
+            } header: {
+                Text("Chat Apps")
+            } footer: {
+                Text("When an app is off, its chats are never offered when Needs You asks which chat, never picked for a message, and nothing is typed into it.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onAppear(perform: load)
+        .onReceive(NotificationCenter.default.publisher(for: ChatApps.changed)) { _ in load() }
+    }
+
+    private func row(_ a: ChatApps.App) -> some View {
+        Toggle(isOn: Binding(get: { !disabled.contains(a.id) },
+                             set: { on in ChatApps.set(a.id, enabled: on); disabled = ChatApps.disabled })) {
+            Label {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(a.name)
+                    if let s = detail(a) { Text(s).font(.caption).foregroundStyle(.secondary) }
+                }
+            } icon: {
+                AppIcon(bundle: a.kind == .mux ? nil : a.id, fallback: a.kind == .mux ? "rectangle.split.3x1" : "app", size: 20)
+            }
+        }
+    }
+
+    private func detail(_ a: ChatApps.App) -> String? {
+        let n = registry.reachable.filter { ChatApps.owner($0)?.id == a.id }.count
+        if n > 0 { return n == 1 ? "1 chat open" : "\(n) chats open" }
+        if a.kind == .chatApp { return NSRunningApplication.runningApplications(withBundleIdentifier: a.id).isEmpty ? "Not running" : "Running" }
+        return nil
+    }
+
+    private func load() {
+        apps = ChatApps.all
+        disabled = ChatApps.disabled
     }
 }
 
