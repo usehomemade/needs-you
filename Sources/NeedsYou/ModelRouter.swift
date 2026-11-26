@@ -93,7 +93,10 @@ import FoundationModels
     static func describe(_ targets: [ChatTarget]) -> String {
         targets.enumerated().map { i, t in
             var parts = ["\(i + 1). \(t.title)"]
-            if !t.folder.isEmpty { parts.append("folder: \(t.folder)") }
+            if !t.folder.isEmpty { parts.append("folder: \(t.folder)") } else if t.home { parts.append("folder: his home folder") }
+            // herdr names he gave it (HM-1425): "the bakery one in general".
+            if !t.label.isEmpty { parts.append("herdr tab: \(t.label)") }
+            if !t.workspace.isEmpty { parts.append("herdr workspace: \(t.workspace)") }
             if !t.detail.isEmpty, t.detail != t.title { parts.append("working on: \(String(t.detail.prefix(200)))") }
             if t.kind == .desktop {
                 parts.append(t.appChat == nil ? "a chat app; can start a new chat" : "an earlier chat in \(Router.runningChatApps().first { $0.bundle == t.id }?.title ?? "a chat app") (opens it)")
@@ -132,7 +135,7 @@ import FoundationModels
     @Generable struct ClarifyAnswer {
         @Guide(description: "true only when he clearly says to stop, cancel, forget it or not send the message at all. Saying none of these chats, no, or pointing at another chat is NOT cancel")
         var cancel: Bool
-        @Guide(description: "When your last question was 'Send it to ...?': yes, no, or unclear. Otherwise unclear", .anyOf(["yes", "no", "unclear"]))
+        @Guide(description: "When your last question offered one chat ('Send it to ...?' or 'X?'): yes, no, or unclear. Otherwise unclear", .anyOf(["yes", "no", "unclear"]))
         var answer: String
         @Guide(description: "true when he says none of the chats you offered last is the right one")
         var noneOfThese: Bool
@@ -140,6 +143,12 @@ import FoundationModels
         var chat: Int
         @Guide(description: "What he says the chat he means is about or works on, in his words; empty when he said nothing about it")
         var about: String
+        @Guide(description: "true only when his last answer clearly picks that chat number. false when he describes a chat that is not clearly one in the list, or the chat is unclear")
+        var sure: Bool
+        @Guide(description: "true when he picked the chat by its number or place in your list (two, the second one)")
+        var byNumber: Bool
+        @Guide(description: "The words he used to call the chat by a name (its tab, workspace, folder or project), copied word for word from his last answer. Empty when he named none")
+        var named: String
     }
 
     @available(macOS 26, *)
@@ -213,9 +222,10 @@ import FoundationModels
                     """)
                 let r = try await s.respond(to: prompt, generating: ClarifyAnswer.self, options: GenerationOptions(sampling: .greedy))
                 let c = r.content
-                Isolation.note("model clarify: chat \(c.chat) \(c.answer)\(c.cancel ? " cancel" : "")\(c.noneOfThese ? " none-of-these" : "") about \u{201C}\(c.about)\u{201D}")
+                Isolation.note("model clarify: chat \(c.chat)\(c.sure ? " sure" : " unsure")\(c.byNumber ? " by number" : "") \(c.answer)\(c.cancel ? " cancel" : "")\(c.noneOfThese ? " none-of-these" : "") named \u{201C}\(c.named)\u{201D} about \u{201C}\(c.about)\u{201D}")
                 return ClarifyConversation.Reading(chat: (1...chats.count).contains(c.chat) ? c.chat - 1 : nil, cancel: c.cancel,
-                                                   yesNo: .init(rawValue: c.answer) ?? .unclear, noneOfThese: c.noneOfThese, about: c.about)
+                                                   yesNo: .init(rawValue: c.answer) ?? .unclear, noneOfThese: c.noneOfThese, about: c.about,
+                                                   sure: c.sure, byNumber: c.byNumber, named: c.named)
             } catch {
                 Isolation.note("model clarify failed: \(error.localizedDescription)")
                 return nil

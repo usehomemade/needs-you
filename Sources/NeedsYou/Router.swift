@@ -21,6 +21,10 @@ struct ChatTarget: Hashable {
     /// kept apart so the matcher can weigh them (HM-1364).
     var label = ""
     var folder = ""
+    /// herdr workspace label ("general", HM-1425): he names chats by it too.
+    var workspace = ""
+    /// It runs in his home folder (`folder` is empty then).
+    var home = false
     /// Registered chats: what it works on (status line, last prompt), for matching.
     var detail = ""
     /// A chat in a chat app's sidebar that is not open (HM-1389): opened before typing.
@@ -37,9 +41,15 @@ struct ChatTarget: Hashable {
 
     var candidate: ChatCandidate {
         var c = ChatCandidate(title: kind == .registered ? [title, detail].filter { !$0.isEmpty }.joined(separator: " ") : title, label: label, folder: folder,
-                              aliases: kind == .herdrAgent || kind == .registered ? [] : aliases, focused: focused, isDesktop: kind == .desktop)
+                              aliases: kind == .herdrAgent || kind == .registered ? places : aliases, focused: focused, isDesktop: kind == .desktop)
         if kind == .desktop { c.detail = detail }
         return c
+    }
+
+    /// Its herdr workspace, alone and with the tab label ("bakery general"), as names (HM-1425).
+    var places: [String] {
+        guard !workspace.isEmpty else { return [] }
+        return [workspace] + (label.isEmpty ? [] : [label + " " + workspace])
     }
 }
 
@@ -134,6 +144,7 @@ enum Router {
                        // the status's start already: the status is repeated only when it is longer than that.
                        detail: c.folder.isEmpty && (c.status ?? "").count <= 40 ? (c.prompts.last.map { "last asked: " + String($0.prefix(120)) } ?? "") : c.summary)
             t.app = ChatApps.owner(c)?.id
+            t.home = !c.cwd.isEmpty && c.folder.isEmpty
             return t
         }
         // The chat apps are read off the screen by `voiceTargets`, off the main thread (HM-1418).
@@ -152,8 +163,21 @@ enum Router {
 
     private static func voiceTargetsAll(testOnly: Bool) async -> [ChatTarget] {
         if !testOnly {
-            let reg = await MainActor.run { registeredTargets() }
+            var reg = await MainActor.run { registeredTargets() }
             if !reg.isEmpty {
+                // Connected chats in herdr get its tab and workspace names too (HM-1425).
+                let herdrPanes = await MainActor.run { () -> [String: String] in
+                    var m: [String: String] = [:]
+                    for c in ChatRegistry.shared.reachable { if let p = c.pane, p.kind == .herdr { m[c.id] = p.id } }
+                    return m
+                }
+                if !herdrPanes.isEmpty {
+                    let places = await herdrPlaces()
+                    for i in reg.indices {
+                        guard let pane = herdrPanes[reg[i].id], let p = places[pane] else { continue }
+                        reg[i].label = p.tab; reg[i].workspace = p.workspace
+                    }
+                }
                 let panes = await MainActor.run { Set(ChatRegistry.shared.reachable.compactMap { $0.pane?.id }) }
                 let unconnected = await targetsAll(apps: false).filter { $0.kind == .herdrAgent && !panes.contains($0.id) }
                     .map { t -> ChatTarget in var t = t; t.focused = false; return t } // "in front" means used last, among connected chats
@@ -181,15 +205,59 @@ enum Router {
         return includeDisabled ? out : out.filter(\.enabled)
     }
 
+    /// herdr workspace id -> its label ("w2" -> "general").
+    static func herdrWorkspaces() async -> [String: String] {
+        var out: [String: String] = [:]
+        if let json = try? await run([herdr, "workspace", "list"]),
+           let data = json.data(using: .utf8),
+           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let list = (root["result"] as? [String: Any])?["workspaces"] as? [[String: Any]] {
+            for w in list { if let id = w["workspace_id"] as? String, let l = w["label"] as? String { out[id] = l } }
+        }
+        return out
+    }
+
+    /// herdr pane id -> its tab label and workspace label, for connected chats in herdr (HM-1425).
+    static func herdrPlaces() async -> [String: (tab: String, workspace: String)] {
+        let spaces = await herdrWorkspaces()
+        var tabs: [String: String] = [:]
+        if let json = try? await run([herdr, "tab", "list"]),
+           let data = json.data(using: .utf8),
+           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let list = (root["result"] as? [String: Any])?["tabs"] as? [[String: Any]] {
+            for t in list { if let id = t["tab_id"] as? String { tabs[id] = (t["label"] as? String) ?? "" } }
+        }
+        var out: [String: (tab: String, workspace: String)] = [:]
+        if let json = try? await run([herdr, "pane", "list"]),
+           let data = json.data(using: .utf8),
+           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let list = (root["result"] as? [String: Any])?["panes"] as? [[String: Any]] {
+            for p in list {
+                guard let id = p["pane_id"] as? String else { continue }
+                // A pane label he gave wins over the tab's.
+                let paneLabel = (p["label"] as? String) ?? ""
+                out[id] = (paneLabel.isEmpty ? tabs[(p["tab_id"] as? String) ?? ""] ?? "" : paneLabel,
+                           spaces[(p["workspace_id"] as? String) ?? ""] ?? "")
+            }
+        }
+        return out
+    }
+
     private static func targetsAll(apps: Bool = true) async -> [ChatTarget] {
         var out: [ChatTarget] = []
-        // Tab labels the user gave in herdr ("summer-trips") are names too.
+        // Tab labels the user gave in herdr ("summer-trips") are names too, and workspace labels (HM-1425).
         var labels: [String: String] = [:]
+        let spaces = await herdrWorkspaces()
+        var tabSpace: [String: String] = [:]
         if let json = try? await run([herdr, "tab", "list"]),
            let data = json.data(using: .utf8),
            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let tabs = (root["result"] as? [String: Any])?["tabs"] as? [[String: Any]] {
-            for t in tabs { if let id = t["tab_id"] as? String, let l = t["label"] as? String { labels[id] = l } }
+            for t in tabs {
+                guard let id = t["tab_id"] as? String else { continue }
+                if let l = t["label"] as? String { labels[id] = l }
+                if let w = t["workspace_id"] as? String { tabSpace[id] = spaces[w] ?? "" }
+            }
         }
         if let json = try? await run([herdr, "agent", "list"]),
            let data = json.data(using: .utf8),
@@ -207,6 +275,8 @@ enum Router {
                                    focused: (a["focused"] as? Bool) ?? false,
                                    label: label, folder: cwd == NSHomeDirectory() ? "" : folder)
                 t.app = ChatAppSwitches.muxID(.herdr)
+                t.workspace = spaces[(a["workspace_id"] as? String) ?? ""] ?? tabSpace[(a["tab_id"] as? String) ?? ""] ?? ""
+                t.home = cwd == NSHomeDirectory()
                 out.append(t)
             }
         }

@@ -52,6 +52,9 @@ import NeedsYouShared
             return out
         }
         add(t.title); add(t.folder); add(t.label)
+        // herdr workspace ("general") and tab + workspace ("bakery general"), HM-1425.
+        for p in t.places { add(p) }
+        if t.home { add("home folder") }
         for p in t.detail.components(separatedBy: "; ") {
             add(p.hasPrefix("last asked: ") ? String(p.dropFirst(12)) : p)
         }

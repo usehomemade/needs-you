@@ -132,21 +132,33 @@ final class VoiceCommands: ObservableObject {
             let wasConfirming = convo.confirming != nil
             var reading = ClarifyConversation.Reading()
             var byName: Int?
+            var missing: String?
             if number == nil {
                 convo.answered(answer)
                 let clean = ChoicePick.stripEcho(answer, question: question, names: offeredNames)
                 byName = ChoicePick.name(clean, names: allNames)
                 // The on-device model reads it with the whole conversation; without one, the names do.
                 reading = await ModelRouter.shared.converse(convo, chats: everyone) ?? ClarifyConversation.Reading(chat: byName)
+                // A name he said (HM-1425): matched against every chat's tab, workspace, folder and title.
+                let named = ClarifyConversation.spokenName(reading.named, in: clean)
+                if !named.isEmpty {
+                    switch ClarifyConversation.nameMatch(named, everyone.map(\.candidate)) {
+                    case .chat(let i): byName = i
+                    case .missing: missing = named
+                    case .unclear: break
+                    }
+                }
             }
             let meaning = MeaningIndex.shared.rank(convo.searchText(about: reading.about), everyone)
-            let step = convo.next(reading, pressed: number, meaning: meaning.scores, byName: byName)
-            Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(step); meaning \(Meaning.describe(meaning.scores)); name \(byName.map { String($0 + 1) } ?? "-")")
+            let step = convo.next(reading, pressed: number, meaning: meaning.scores, byName: byName, missingName: missing)
+            Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(step); meaning \(Meaning.describe(meaning.scores)); name \(byName.map { String($0 + 1) } ?? "-")\(missing.map { "; no chat called \u{201C}\($0)\u{201D}" } ?? "")")
             switch step {
             case .send(let i): return (.picked(everyone[i], how: wasConfirming ? "confirmed" : "picked"), turns)
             case .cancel: return (.cancelled("He said not to send it"), turns)
-            case .confirm(let i): question = "Send it to \(allNames[i])?"
+            case .confirm(let i):
+                question = (missing.map { "I can't find a chat called \($0). " } ?? "") + "Send it to \(allNames[i])?"
             case .ask(let idx): question = Self.followUpQuestion(idx.map { allNames[$0] })
+            case .notFound(let name): question = "I can't find a chat called \(name). Which one? Tell me what it's about."
             }
         }
     }
@@ -211,7 +223,7 @@ final class VoiceCommands: ObservableObject {
             }
         }
         watchDevices()
-        listener.onCancelWord = { [weak self] in DispatchQueue.main.async { self?.countdown?.cancel() } }
+        listener.onCancelWord = { [weak self] heard in DispatchQueue.main.async { self?.countdown?.cancel(by: "spoken \u{201C}\(heard)\u{201D}") } }
         Conductor.shared.$micInUse.removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.refresh() }
@@ -783,7 +795,7 @@ final class VoiceCommands: ObservableObject {
     /// Escape during the countdown (Hotkeys): true if a send was waiting.
     func cancelPendingSend() -> Bool {
         guard let countdown else { return false }
-        countdown.cancel()
+        countdown.cancel(by: "Escape")
         return true
     }
 
@@ -793,11 +805,17 @@ final class VoiceCommands: ObservableObject {
         countdown = c
         Island.shared.sending(to: target, seconds: seconds)
         Hotkeys.shared.escapeWhileSending(true)
-        if listener.isRunning { listener.startCancelWatch() }
+        // After "which chat?" the room mic is still off (it was the answer's): then only Escape stops it.
+        let watching = listener.isRunning
+        if watching { listener.startCancelWatch() }
+        Isolation.note("countdown: \(seconds) s to \(target), \(watching ? "Escape or saying cancel stops it" : "Escape stops it (mic off)")")
         let go = await c.run(seconds: seconds)
         listener.stopCancelWatch()
         Hotkeys.shared.escapeWhileSending(false)
-        if !go { Island.shared.sendCancelled() }
+        if !go {
+            Island.shared.sendCancelled()
+            Isolation.note("countdown: cancelled by \(c.cancelledBy ?? "?")")
+        }
         return go
     }
 
@@ -848,8 +866,13 @@ final class VoiceCommands: ObservableObject {
 @MainActor
 final class SendCountdown {
     private(set) var cancelled = false
+    /// What stopped it ("Escape", or the words heard), for the log (HM-1425).
+    private(set) var cancelledBy: String?
 
-    func cancel() { cancelled = true }
+    func cancel(by why: String) {
+        guard !cancelled else { return }
+        cancelled = true; cancelledBy = why
+    }
 
     /// True if it ran out without being cancelled.
     func run(seconds: Double) async -> Bool {

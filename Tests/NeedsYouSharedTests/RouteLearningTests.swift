@@ -99,7 +99,77 @@ final class ClarifyConversationTests: XCTestCase {
     func testSpokenOfferedChatSends() {
         var c = ClarifyConversation(message: "book it", offered: [3, 1])
         c.asked("Which chat?"); c.answered("the second one")
-        XCTAssertEqual(c.next(R(chat: 1), meaning: []), .send(1))
+        XCTAssertEqual(c.next(R(chat: 1, sure: true, byNumber: true), meaning: []), .send(1))
+    }
+    /// HM-1425: "needs-you?" answered with a description of another chat never sends to the offered one.
+    func testDescribingAnotherChatNeverSendsToTheOfferedOne() {
+        var c = ClarifyConversation(message: "tell me when the bakery work is done", offered: [0])
+        c.asked("I'm not sure which chat you meant. orchard?")
+        c.answered("No, the bakery chat in my home folder. It's called bakery general in herdr.")
+        // The model picks the offered chat but is unsure; his name for it ranks chat 3.
+        let step = c.next(R(chat: 0, about: "bakery general"), meaning: Self.scores([(0, 0.53), (3, 0.51), (2, 0.49)]), byName: 3)
+        XCTAssertEqual(step, .confirm(3))
+        XCTAssertNotEqual(step, .send(0))
+    }
+    func testUnsurePickOfOfferedChatDoesNotSend() {
+        var c = ClarifyConversation(message: "m", offered: [0, 1])
+        c.asked("Which chat? 1, orchard. Or 2, bakery?"); c.answered("the one in the garden")
+        XCTAssertEqual(c.next(R(chat: 0), meaning: Self.scores([(0, 0.40), (1, 0.39)])), .ask([0, 1]))
+    }
+    func testSurePickNeedsASecondSignal() {
+        var c = ClarifyConversation(message: "m", offered: [0, 1])
+        c.asked("Which chat? 1, orchard. Or 2, bakery?"); c.answered("orchard")
+        // Sure, and nothing backs it: ask "Send it to orchard?" instead of sending.
+        XCTAssertEqual(c.next(R(chat: 0, sure: true), meaning: []), .confirm(0))
+        var d = ClarifyConversation(message: "m", offered: [0, 1])
+        d.asked("Which chat? 1, orchard. Or 2, bakery?"); d.answered("orchard")
+        XCTAssertEqual(d.next(R(chat: 0, sure: true), meaning: [], byName: 0), .send(0))
+        // His name for it points at another chat: no send.
+        var e = ClarifyConversation(message: "m", offered: [0, 1])
+        e.asked("Which chat? 1, orchard. Or 2, bakery?"); e.answered("orchard, no, the pantry one")
+        XCTAssertNotEqual(e.next(R(chat: 0, sure: true), meaning: [], byName: 2), .send(0))
+    }
+    func testNameNoChatHasSaysSoAndKeepsGoing() {
+        var c = ClarifyConversation(message: "m", offered: [0])
+        c.asked("orchard?"); c.answered("no, the lighthouse one")
+        XCTAssertEqual(c.next(R(chat: 0, yesNo: .no, named: "lighthouse"), meaning: Self.scores([(1, 0.4), (2, 0.39)]), missingName: "lighthouse"),
+                       .notFound("lighthouse"))
+        XCTAssertEqual(c.offered, [])
+        XCTAssertEqual(c.rejected, [0])
+        c.asked("I can't find a chat called lighthouse. Which one?"); c.answered("the bakery one")
+        XCTAssertEqual(c.next(R(chat: 2), meaning: Self.scores([(2, 0.5), (1, 0.3)]), byName: 2), .confirm(2))
+    }
+    func testMissingNameStillOffersAChatTwoSignalsAgreeOn() {
+        var c = ClarifyConversation(message: "m", offered: [0])
+        c.asked("orchard?"); c.answered("no, the one in my home folder, called lighthouse")
+        XCTAssertEqual(c.next(R(yesNo: .no, named: "lighthouse"), meaning: Self.scores([(1, 0.37), (0, 0.02)]), byName: 1, missingName: "lighthouse"),
+                       .confirm(1))
+    }
+    func testYesToTheOneOfferedSends() {
+        var c = ClarifyConversation(message: "m", offered: [4])
+        c.asked("orchard?"); c.answered("yes")
+        XCTAssertEqual(c.next(R(chat: 4, yesNo: .yes), meaning: Self.scores([(1, 0.5), (4, 0.3)])), .send(4))
+    }
+    func testYesNamingAnotherChatLooksAgain() {
+        var c = ClarifyConversation(message: "m", offered: [4])
+        c.asked("orchard?"); c.answered("yes, the bakery one")
+        XCTAssertEqual(c.next(R(chat: 1, yesNo: .yes), meaning: Self.scores([(1, 0.5), (4, 0.3)]), byName: 1), .confirm(1))
+    }
+    /// Names: herdr tab and workspace labels find a chat; a mishearing next to them is dropped.
+    func testNameMatchUsesWorkspaceAndTab() {
+        let chats = [
+            ChatCandidate(title: "orchard", folder: "orchard"),
+            ChatCandidate(title: "Sourdough starter notes", label: "bakery", aliases: ["general", "bakery general"]),
+            ChatCandidate(title: "Trip planner", label: "summer-trips", aliases: ["general", "summer-trips general"]),
+            ChatCandidate(title: "Claude Code", label: "auto-updates", aliases: ["bakery", "auto-updates bakery"]),
+        ]
+        XCTAssertEqual(ClarifyConversation.nameMatch("bakery general", chats), .chat(1))
+        XCTAssertEqual(ClarifyConversation.nameMatch("Bakery General", chats), .chat(1))
+        XCTAssertEqual(ClarifyConversation.nameMatch("bakery general inherder", chats), .chat(1))
+        XCTAssertEqual(ClarifyConversation.nameMatch("lighthouse", chats), .missing)
+        XCTAssertEqual(ClarifyConversation.nameMatch("general", chats), .unclear)
+        XCTAssertEqual(ClarifyConversation.spokenName("Bakery General", in: "no, it's called bakery general in herdr"), "bakery general")
+        XCTAssertEqual(ClarifyConversation.spokenName("lighthouse", in: "the bakery one"), "")
     }
     func testNoneOfThemIsNotCancelAndSearchesTheRest() {
         var c = ClarifyConversation(message: "make it a conversation", offered: [0, 1])
@@ -119,7 +189,7 @@ final class ClarifyConversationTests: XCTestCase {
         // No, and nothing clear: ask again, without the rejected chat, closest first.
         XCTAssertEqual(c.next(R(yesNo: .no), meaning: Self.scores([(2, 0.5), (3, 0.41), (0, 0.40), (1, 0.2)])), .ask([3, 0, 1]))
         c.asked("Which chat then?"); c.answered("the racer save file")
-        XCTAssertEqual(c.next(R(chat: 3), meaning: Self.scores([(3, 0.5), (0, 0.3)])), .send(3)) // offered last time
+        XCTAssertEqual(c.next(R(chat: 3, sure: true), meaning: Self.scores([(3, 0.5), (0, 0.3)])), .send(3)) // offered last time, meaning backs it
     }
     func testConfirmYes() {
         var c = ClarifyConversation(message: "m", offered: [0, 1])

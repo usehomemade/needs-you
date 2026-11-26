@@ -24,7 +24,8 @@ final class WakeListener {
     var onWake: (() -> Void)?
     /// Text heard while waiting for the wake phrase (Settings → Test).
     var onHeard: ((String) -> Void)?
-    var onCancelWord: (() -> Void)?
+    /// "Cancel" heard during the send countdown, with what was heard.
+    var onCancelWord: ((String) -> Void)?
     var onEndOfFile: (() -> Void)?
     var onLongPause: (() -> Void)?
     /// On-screen subtitles: the command so far (Parakeet, about every 0.8 s) and the
@@ -590,9 +591,12 @@ final class WakeListener {
         case .pending where Wake.containsWakeWord(text):
             // Wake word recognized just after the pause closed the segment.
             wake()
-        case .cancelWatch where text.lowercased().contains("cancel"):
-            onCancelWord?()
+        case .cancelWatch where ChatMatcher.words(text).contains(where: { $0.hasPrefix("cancel") }):
+            // Only audio heard after the countdown started reaches here (startCancelWatch resets).
+            onCancelWord?(text)
             reset()
+        case .cancelWatch:
+            Isolation.note("countdown: heard \u{201C}\(text)\u{201D}, not a stop")
         default:
             break
         }
