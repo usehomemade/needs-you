@@ -83,7 +83,7 @@ public struct Response: Codable {
     public var transcript: String?
     /// The transcript exactly as heard, when the Transcript setting changed it.
     public var transcriptVerbatim: String?
-    /// status "interrupted": what Needs You had said when the user said "Stop, Claude".
+    /// status "interrupted": what Needs You had said when the user said "Stop, Mac".
     public var spokenUntil: String?
     public var turns: [Turn]?
     public var artifactURL: String?

@@ -2,7 +2,7 @@ import AVFoundation
 import FluidAudio
 import Foundation
 
-/// Test hook: how fast does "Hey Claude" wake the listener on recorded clips?
+/// Test hook: how fast does "Hey Mac" wake the listener on recorded clips?
 /// `needs-you voice-test <wav>... --title wake-latency[:fast|:slow]`
 /// Plays each file in real time through a fresh WakeListener (the live mic keeps
 /// running; nothing is sent, no sound plays) and reports, per clip, when the wake

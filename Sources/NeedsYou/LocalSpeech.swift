@@ -84,7 +84,7 @@ actor LocalSTT {
     static let shared = LocalSTT()
 
     /// The model for his words and the wake check. Whisper large-v3-turbo with a
-    /// prompt ("wturbo+p"): on his clips mixed with game audio it caught "Hey Claude"
+    /// prompt ("wturbo+p"): on his clips mixed with game audio it caught "Hey Mac"
     /// 16/19 vs Parakeet's 8/19, and its words held up better (WER vs its own clean
     /// transcript 45 % vs 66 %). About 0.5 s per clip on the Neural Engine.
     static var modelName: String { UserDefaults.standard.string(forKey: "localSTTModel") ?? "wturbo+p" }
@@ -140,7 +140,7 @@ actor LocalSTT {
     }
 
     /// `language`: `.spoken` for his words (the languages he turned on), `.english`
-    /// (default) for the wake check, "Stop, Claude" and enrollment lines. Only the
+    /// (default) for the wake check, "Stop, Mac" and enrollment lines. Only the
     /// Whisper models know other languages; the others always hear English.
     func transcribe(samples: [Float], model: String? = nil, language: STTLanguage = .english) async throws -> String {
         try await hear(samples: samples, model: model, language: language).text
@@ -372,7 +372,7 @@ extension Recorder {
     }
 }
 
-/// Fast "Stop, Claude": re-reads the last 2 s of the (echo-cancelled) mic with
+/// Fast "Stop, Mac": re-reads the last 2 s of the (echo-cancelled) mic with
 /// Parakeet every 250 ms while someone is talking. About 30 ms per pass on the
 /// Neural Engine, so the stop lands a few hundred ms after the phrase.
 final class FastStopDetector {

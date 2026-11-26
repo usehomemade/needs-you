@@ -9,7 +9,7 @@ import SwiftUI
 /// title follows the pane and the last pane opens again next time.
 struct SettingsView: View {
     enum Pane: String, CaseIterable {
-        case general, permissions, heyClaude, voice, microphones, models, doNotDisturb, agents, apps
+        case general, permissions, wake, voice, microphones, models, doNotDisturb, agents, apps
     }
 
     @AppStorage("settingsPane") private var pane = Pane.general.rawValue
@@ -20,8 +20,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }.tag(Pane.general.rawValue)
             PermissionsPane()
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }.tag(Pane.permissions.rawValue)
-            HeyClaudePane()
-                .tabItem { Label(Wake.phrase, systemImage: "waveform") }.tag(Pane.heyClaude.rawValue)
+            WakePane()
+                .tabItem { Label(Wake.phrase, systemImage: "waveform") }.tag(Pane.wake.rawValue)
             VoicePane()
                 .tabItem { Label("Voice", systemImage: "speaker.wave.2") }.tag(Pane.voice.rawValue)
             MicrophonesPane()
@@ -149,9 +149,9 @@ struct PermissionsPane: View {
     }
 }
 
-// MARK: Hey Claude
+// MARK: Hey Mac
 
-struct HeyClaudePane: View {
+struct WakePane: View {
     @ObservedObject private var conductor = Conductor.shared
     @ObservedObject private var voice = VoiceCommands.shared
     @AppStorage(Wake.defaultsKey) private var wakePhrase = WakeMatcher.defaultPhrase
@@ -170,7 +170,7 @@ struct HeyClaudePane: View {
                     }
                 }
             } footer: {
-                Text("Say \u{201C}\(phrase), <chat name>: <message>\u{201D}, or \u{201C}\(phrase), this one: <message>\u{201D} for the chat in front. Speech stays on this Mac until you say \u{201C}\(phrase)\u{201D}. \u{201C}Stop, Claude\u{201D} cuts Needs You off\(WakeMatcher(phrase: wakePhrase).isDefault ? "" : ", and so does \u{201C}Stop, \(WakeMatcher(phrase: wakePhrase).name)\u{201D}").")
+                Text("Say \u{201C}\(phrase), <chat name>: <message>\u{201D}, or \u{201C}\(phrase), this one: <message>\u{201D} for the chat in front. Speech stays on this Mac until you say \u{201C}\(phrase)\u{201D}. \u{201C}Stop, \(WakeMatcher(phrase: wakePhrase).name)\u{201D} cuts Needs You off.")
                     .foregroundStyle(.secondary)
             }
             Section("Wake Phrase") {
@@ -579,7 +579,7 @@ struct ReachByVoiceSection: View {
         } header: {
             Text("Reach by Voice")
         } footer: {
-            Text("Adds the Needs You MCP server and hooks to the agent (a backup of each file is kept). Each chat then tells Needs You what it is working on. A message for an idle chat is typed into it through Accessibility; a busy chat gets it at its next step. Chats of agents that are not connected cannot be reached by voice. New chats pick it up; restart open ones. Codex asks once to trust the new hooks. The Claude app gets the MCP server only, so its chats can answer out loud; \u{201C}Hey Claude, new chat on Claude desktop, ...\u{201D} reaches it either way.")
+            Text("Adds the Needs You MCP server and hooks to the agent (a backup of each file is kept). Each chat then tells Needs You what it is working on. A message for an idle chat is typed into it through Accessibility; a busy chat gets it at its next step. Chats of agents that are not connected cannot be reached by voice. New chats pick it up; restart open ones. Codex asks once to trust the new hooks. The Claude app gets the MCP server only, so its chats can answer out loud; \u{201C}Hey Mac, new chat on Claude desktop, ...\u{201D} reaches it either way.")
                 .foregroundStyle(.secondary)
         }
         .onAppear { connect.refresh() }
@@ -619,7 +619,7 @@ struct ChatGPTRow: View {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("ChatGPT").font(.headline)
                                 Text("1. Codex tasks in the ChatGPT app use the Codex connection. Turn on Codex above, then start a new task. They answer out loud like Claude Code.")
-                                Text("2. Plain ChatGPT chats can only use connectors on the internet, so they can't reach Needs You on this Mac. You can still talk to them: \u{201C}Hey Claude, use ChatGPT to ask \u{2026}\u{201D} opens a new chat and types your question. The answer stays on screen.")
+                                Text("2. Plain ChatGPT chats can only use connectors on the internet, so they can't reach Needs You on this Mac. You can still talk to them: \u{201C}Hey Mac, use ChatGPT to ask \u{2026}\u{201D} opens a new chat and types your question. The answer stays on screen.")
                                 Button("Open ChatGPT") { NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) }
                             }
                             .font(.callout)

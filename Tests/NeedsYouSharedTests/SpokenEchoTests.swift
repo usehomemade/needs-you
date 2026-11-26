@@ -12,16 +12,16 @@ final class SpokenEchoTests: XCTestCase {
     }
 
     func testStopPhraseInsideTheSpokenTextIsEcho() {
-        let s = "If it talks too long, say Stop, Claude and it stops."
-        XCTAssertTrue(SpokenEcho.isEcho("Stop, Claude", spoken: s))
-        XCTAssertTrue(SpokenEcho.isEcho("stop cl", spoken: s))
+        let s = "If it talks too long, say Stop, Mac and it stops."
+        XCTAssertTrue(SpokenEcho.isEcho("Stop, Mac", spoken: s))
+        XCTAssertTrue(SpokenEcho.isEcho("stop ma", spoken: s))
     }
 
     func testUserWordsAreNotEcho() {
-        XCTAssertFalse(SpokenEcho.isEcho("Stop, Claude", spoken: line))
+        XCTAssertFalse(SpokenEcho.isEcho("Stop, Mac", spoken: line))
         XCTAssertFalse(SpokenEcho.isEcho("Stop", spoken: line))
-        XCTAssertFalse(SpokenEcho.isEcho("Hey Claude", spoken: line))
-        XCTAssertFalse(SpokenEcho.isEcho("Stop cloud", spoken: "The cloud build for orchard is green."))
+        XCTAssertFalse(SpokenEcho.isEcho("Hey Mac", spoken: line))
+        XCTAssertFalse(SpokenEcho.isEcho("Stop Mack", spoken: "The Mack build for orchard is green."))
     }
 
     func testOrderMatters() {

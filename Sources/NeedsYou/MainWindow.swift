@@ -507,7 +507,7 @@ struct ConversationRow: View {
         var t = convo.title.trimmingCharacters(in: .whitespaces)
         while t.hasSuffix("\u{2026}") || t.hasSuffix(".") { t.removeLast() }
         let st = squash(t), body = squash(snippet.replacingOccurrences(of: "You: ", with: "")), who = squash(convo.sender)
-        if st.isEmpty || st == "heyclaude" || st == who || st == "to" + who { return nil }
+        if st.isEmpty || st == squash(Wake.phrase) || st == who || st == "to" + who { return nil }
         if convo.kind == "send", t.hasPrefix("To ") { return nil }
         if body.hasPrefix(st) || st.hasPrefix(body) { return nil }
         if squash(convo.message).hasPrefix(st) && body.hasPrefix(squash(convo.message).prefix(20)) { return nil }

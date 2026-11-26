@@ -176,7 +176,7 @@ struct ModelSettings: View {
     private var ps4Note: String {
         if !PS4.installed { return "Model not installed (tools/ps4/README.md)." }
         let base = "Pulls your voice out of the mix before speech to text. 68 MB · RAM ~0.5-0.8 GB while loaded · GPU, ~30-50 ms per second of audio."
-        return PS4.hasEnrollment ? base : base + " Learn your voice first (Training or Hey Claude → Learn My Voice)."
+        return PS4.hasEnrollment ? base : base + " Learn your voice first (Training or Hey Mac → Learn My Voice)."
     }
 
     private func picker(_ title: String, _ value: Binding<String>, _ models: [SpeechModel]) -> some View {

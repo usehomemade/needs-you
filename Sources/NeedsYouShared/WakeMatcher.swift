@@ -1,12 +1,21 @@
 import Foundation
 
-/// Finds the wake phrase ("Hey Claude" by default, or what the user set in Settings)
-/// in recognized text. The default phrase keeps the hand-tuned patterns measured on
-/// his clips; any other phrase gets a matcher built from its words: case and
+/// Finds the wake phrase ("Hey Mac" by default, or what the user set in Settings)
+/// in recognized text. The matcher is built from the phrase's words: case and
 /// punctuation ignored, each word compared by a small phonetic key plus edit
-/// distance, with one mishearing allowed in the last word.
+/// distance, with one mishearing allowed in the last word. The words must come
+/// together, so the name alone in a normal sentence ("my Mac is slow") never wakes.
 public struct WakeMatcher: Sendable {
-    public static let defaultPhrase = "Hey Claude"
+    public static let defaultPhrase = "Hey Mac"
+    /// The default before HM-1428; a stored phrase equal to it moves to the new default.
+    public static let previousDefaultWords = ["hey", "cl" + "aude"]
+
+    /// The phrase to store instead of `stored` (HM-1428): the old default becomes
+    /// the new one; nil keeps what is stored (a custom phrase, or nothing set).
+    public static func migrated(_ stored: String?) -> String? {
+        guard let stored, normalize(stored) == previousDefaultWords else { return nil }
+        return defaultPhrase
+    }
 
     /// The phrase as typed (trimmed), e.g. "Hey Baby".
     public let phrase: String
@@ -18,14 +27,14 @@ public struct WakeMatcher: Sendable {
         let trimmed = phrase.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         let w = Self.normalize(trimmed)
         self.phrase = w.isEmpty ? Self.defaultPhrase : trimmed
-        words = w.isEmpty ? ["hey", "claude"] : w
-        isDefault = words == ["hey", "claude"]
+        words = w.isEmpty ? Self.normalize(Self.defaultPhrase) : w
+        isDefault = words == Self.normalize(Self.defaultPhrase)
     }
 
-    /// The name part, as typed: the last word ("Claude", "Baby").
+    /// The name part, as typed: the last word ("Mac", "Baby").
     public var name: String {
         let parts = phrase.split(separator: " ").map { String($0).trimmingCharacters(in: .punctuationCharacters) }
-        return parts.last(where: { !$0.isEmpty }) ?? "Claude"
+        return parts.last(where: { !$0.isEmpty }) ?? "Mac"
     }
 
     /// Hints for the speech recognizer: the phrase, and the name on its own.
@@ -40,7 +49,6 @@ public struct WakeMatcher: Sendable {
     /// Where the wake phrase is in `text` (the earliest match). `voiceLearned`: a
     /// wake also needs his voice, so worse mishearings may count.
     public func range(in text: String, voiceLearned: Bool) -> Range<String.Index>? {
-        if isDefault { return Legacy.range(text, voiceLearned: voiceLearned) }
         let toks = Self.tokens(text)
         for i in toks.indices {
             if let end = match(0, i, toks, voiceLearned: voiceLearned) {
@@ -57,7 +65,6 @@ public struct WakeMatcher: Sendable {
     /// The newest words of a partial are the phrase with only the start of its last
     /// word ("Hey Cl…", "Hey Ba…"). Callers allow this only with his voice learned.
     public func startsPhrase(_ text: String) -> Bool {
-        if isDefault { return text.range(of: Legacy.partialPattern, options: .regularExpression) != nil }
         guard let last = words.last, last.count >= 4 else { return false }
         // Nothing but punctuation after the fragment.
         guard text.range(of: #"[\p{L}\p{N}][.,!?]*\s*$"#, options: .regularExpression) != nil else { return false }
@@ -77,8 +84,8 @@ public struct WakeMatcher: Sendable {
     /// The first word of the phrase (or a mishearing of "Hey") among the newest
     /// words of a partial: worth a second opinion from the other recognizer.
     public func hint(_ text: String) -> Bool {
-        if isDefault || Self.heyGroup.contains(words[0]) {
-            return text.range(of: Legacy.hintPattern, options: .regularExpression) != nil
+        if Self.heyGroup.contains(words[0]) {
+            return text.range(of: Self.hintPattern, options: .regularExpression) != nil
         }
         let toks = Self.tokens(text)
         for t in toks.suffix(2) where wordMatch(t.word, 0, sentenceStart: true, voiceLearned: false) { return true }
@@ -86,8 +93,8 @@ public struct WakeMatcher: Sendable {
     }
 
     /// The words after the first wake phrase. A wake phrase said again right away
-    /// ("Hey Claude. Hey Claude, this one: ...") is skipped; one quoted later in
-    /// the message ("don't respond to my 'Hey Claude'") stays part of it.
+    /// ("Hey Mac. Hey Mac, this one: ...") is skipped; one quoted later in
+    /// the message ("don't respond to my 'Hey Mac'") stays part of it.
     public func after(_ text: String, voiceLearned: Bool) -> String? {
         guard let r = range(in: text, voiceLearned: voiceLearned) else { return nil }
         var rest = String(text[r.upperBound...])
@@ -99,11 +106,7 @@ public struct WakeMatcher: Sendable {
             if let filler = body.range(of: #"^(?i)(?:(?:uh|um|ähm|hmm|so|okay)[\s,.]+)*"#, options: .regularExpression) {
                 body = String(body[filler.upperBound...])
             }
-            if isDefault {
-                if let again = rest.range(of: "^(?i)(?:(?:uh|um|ähm|hmm|so|okay)[\\s,.]+)*" + Legacy.pattern.replacingOccurrences(of: "(?i)", with: ""), options: .regularExpression) {
-                    rest = String(rest[again.upperBound...]); continue
-                }
-            } else if let again = range(in: body, voiceLearned: false), again.lowerBound == body.startIndex {
+            if let again = range(in: body, voiceLearned: false), again.lowerBound == body.startIndex {
                 rest = String(body[again.upperBound...]); continue
             }
             break
@@ -144,12 +147,15 @@ public struct WakeMatcher: Sendable {
             if group.contains(w) { return true }
             if group == Self.heyGroup, first, sentenceStart {
                 // Far away, "Hey" comes out as "Pay", "They", "A"; only at a sentence start.
-                if Self.heyLoose.contains(w) { return true }
-                if voiceLearned, Self.heyVoiceLoose.contains(w) { return true }
+                // Not "A" or "I" before a short name: "A Mac mini would do" is normal talk.
+                let shortName = (words.last?.count ?? 0) <= 3
+                if Self.heyLoose.contains(w), !(shortName && w.count == 1) { return true }
+                if voiceLearned, Self.heyVoiceLoose.contains(w), !(shortName && w.count == 1) { return true }
             }
             return false
         }
         if w == target + "s" || w + "s" == target { return true }
+        if let heard = Self.heardAs[target], heard.contains(w) { return true }
         if target.hasSuffix("y"), w == target.dropLast() + "ies" { return true }
         guard w.count >= 2 else { return false }
         let d = Self.distance(Array(w), Array(target))
@@ -157,13 +163,17 @@ public struct WakeMatcher: Sendable {
         // Same number of syllables ("Bob" is not "Baby"); one off is fine with his voice.
         let sylOff = abs(Self.syllables(w) - Self.syllables(target))
         guard sylOff == 0 || (voiceLearned && sylOff == 1) else { return false }
-        // Same sound, spelled a bit differently ("Bobby" for "Baby", "Cloud" for "Claude").
+        // Same sound, spelled a bit differently ("Bobby" for "Baby", "Mack" for "Mac").
         if kw == kt, d <= (target.count <= 3 ? 1 : target.count / 2) { return true }
         // One mishearing in the last word ("Clyde"), not a different word ("close", "clue").
         if last, target.count >= 4, abs(w.count - target.count) <= 1,
            Self.distance(Array(kw), Array(kt)) <= 1, d <= max(1, target.count / 3) { return true }
         return false
     }
+
+    /// How the recognizers write a short name the phonetic key misses
+    /// ("Mac" as "Mach", "Mack", "Mc", "Mak").
+    static let heardAs: [String: Set<String>] = ["mac": ["mach", "mack", "macks", "mak", "mc"]]
 
     static let heyGroup: Set<String> = ["hey", "hay", "heh", "hi", "hei", "okay", "ok"]
     static let heyLoose: Set<String> = ["pay", "they", "fay", "hate", "eight", "8", "a"]
@@ -203,7 +213,7 @@ public struct WakeMatcher: Sendable {
 
     /// A small phonetic key: consonant sounds only, voiced and voiceless pairs merged
     /// (d/t, b/p, g/k, v/f, z/s), soft c/g handled, a leading vowel kept as "A".
-    /// "claude", "cloud", "clod", "clawed" -> "KLT"; "close" -> "KLS"; "baby", "bobby", "bob" -> "PP".
+    /// "mac", "mack", "mak" -> "MK"; "baby", "bobby", "bob" -> "PP".
     public static func key(_ word: String) -> String {
         var s = word.lowercased().filter { $0.isLetter }
         for (a, b) in [("ph", "f"), ("ck", "k"), ("sch", "sk"), ("sh", "X"), ("ch", "X"), ("th", "0"), ("qu", "kw"), ("wh", "w"), ("x", "ks")] {
@@ -305,32 +315,24 @@ public struct WakeMatcher: Sendable {
         return max(1, n)
     }
 
-    // MARK: Hey Claude, as measured on his clips
+    // MARK: Stop phrase
 
-    enum Legacy {
-        /// Both recognizers mishear "Claude", more so from across a room
-        /// (measured on far-field noisy clips: "Hey clock", "Hey Claw", "Hey clawed").
-        static let pattern = #"(?i)\b(hey|hi|hay|heh|okay|ok)[\s,.!-]+(claude|claud|clawd|cloud|clouds|clod|clawed|clyde|klaud|klod|claw|claws|clock|clog|clot|clause|claudes)\b"#
-
-        /// Far away, "Hey" also comes out as "Pay", "They", "Fay", "A" or "8". Those only
-        /// count at the start of a sentence, where they are unlikely in normal talk.
-        static let loosePattern = #"(?i)(?:^|[.!?]\s+)(pay|they|fay|hate|eight|8|a)[\s,.!-]+(claude|claud|clawd|clod|clawed|klaud|klod|claw|claws)\b"#
-
-        /// Once his voice is learned a wake also needs his voice, so worse mishearings
-        /// count too (live, over a game: "Hey God", "Hey Club", "I claim this one";
-        /// Whisper over game audio: "Hey Claudes", "Hey Claire", "Playcloud", "Dayclub").
-        static let voicePattern = #"(?i)(?:\b(?:hey|hay|heh)|(?:^|[.!?]\s+)(?:hi|a|i|play|day|pay|they))[\s,.!-]*(god|cod|club|clue|clay|claim|claire|clark|clau|gaud|glod|cloud|clouds|clod|claude|claudes|claud|claw|claws|clawed)\b"#
-
-        /// A "Hey" (or a far-field mishearing of it) among the newest words of a partial.
-        static let hintPattern = #"(?i)\b(hey|hay|heh|hi|okay|ok)\b[\s,.!?]*(\w+[.,!?]*)?$"#
-
-        /// The analyzer's newest partial ends in "Hey Cl…".
-        static let partialPattern = #"(?i)\b(hey|hay|heh)[\s,]+(cl|cla|clau|claw|clo)[.,!?]*$"#
-
-        static func range(_ text: String, voiceLearned: Bool) -> Range<String.Index>? {
-            var found = [pattern, loosePattern].compactMap { text.range(of: $0, options: .regularExpression) }
-            if voiceLearned, let v = text.range(of: voicePattern, options: .regularExpression) { found.append(v) }
-            return found.min { $0.lowerBound < $1.lowerBound }
+    /// "Stop, <name>" ("Stop, Mac" by default) in recognized text: a "stop" (or a
+    /// mishearing of it that starts with "st": "Stuff", "Stomp") right before the
+    /// phrase's last word, or both heard as one word ("Stopmac").
+    public func isStop(_ text: String, voiceLearned: Bool = false) -> Bool {
+        let toks = Self.tokens(text)
+        let last = words.count - 1
+        func stopWord(_ w: String) -> Bool { w == "stop" || (w.hasPrefix("st") && w.count <= 6 && Self.distance(Array(w), Array("stop")) <= 3) }
+        for (i, t) in toks.enumerated() {
+            if stopWord(t.word), i + 1 < toks.count,
+               wordMatch(toks[i + 1].word, last, sentenceStart: false, voiceLearned: voiceLearned) { return true }
+            if t.word.hasPrefix("stop"), t.word.count > 4,
+               wordMatch(String(t.word.dropFirst(4)), last, sentenceStart: false, voiceLearned: voiceLearned) { return true }
         }
+        return false
     }
+
+    /// A "Hey" (or a far-field mishearing of it) among the newest words of a partial.
+    static let hintPattern = #"(?i)\b(hey|hay|heh|hi|okay|ok)\b[\s,.!?]*(\w+[.,!?]*)?$"#
 }

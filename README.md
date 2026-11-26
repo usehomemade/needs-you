@@ -2,7 +2,7 @@
 
 # Needs You
 
-A Mac app that lets your coding agents ask you things out loud. The agent calls `needs-you ask`, the app speaks the question, listens for your answer and hands the text back. If you don't answer, the question waits as a voicemail. You can also talk into any connected chat by saying "Hey Claude".
+A Mac app that lets your coding agents ask you things out loud. The agent calls `needs-you ask`, the app speaks the question, listens for your answer and hands the text back. If you don't answer, the question waits as a voicemail. You can also talk into any connected chat by saying "Hey Mac".
 
 Speech recognition and speech output run on your Mac. No audio or text goes to a cloud service.
 

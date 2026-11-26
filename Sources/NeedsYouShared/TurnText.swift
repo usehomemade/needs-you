@@ -47,7 +47,7 @@ public enum TurnText {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.hasSuffix("?") || t.hasSuffix("!") { return false }
         // "...", "-", "," at the end: he stopped mid-thought.
-        // "...", "-", "," or ":" at the end: he stopped mid-thought ("Hey Claude, this one:").
+        // "...", "-", "," or ":" at the end: he stopped mid-thought ("Hey Mac, this one:").
         if t.hasSuffix("...") || t.hasSuffix("…") || t.hasSuffix(",") || t.hasSuffix("-") || t.hasSuffix("–") || t.hasSuffix(":") { return !words(t).isEmpty }
         let w = words(t)
         guard let last = w.last else { return false }

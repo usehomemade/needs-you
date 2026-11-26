@@ -30,7 +30,7 @@ public enum SpokenEcho {
             .map(String.init)
     }
 
-    /// Same word, a cut-off partial of it ("Cl" for "Claude"), or one letter apart.
+    /// Same word, a cut-off partial of it ("Ma" for "Mac"), or one letter apart.
     static func similar(_ a: String, _ b: String) -> Bool {
         if a == b { return true }
         if a.count >= 2, b.hasPrefix(a) { return true }

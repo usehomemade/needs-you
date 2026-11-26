@@ -111,7 +111,7 @@ final class Island: ObservableObject {
 
     // MARK: Inputs
 
-    /// "Hey Claude" heard: ears grow out of the notch.
+    /// "Hey Mac" heard: ears grow out of the notch.
     func wake(source: String) {
         self.source = source
         wakeAt = Date()
@@ -147,7 +147,7 @@ final class Island: ObservableObject {
         go(.listening)
     }
 
-    /// A Hey Claude mic stopped listening for him (HM-1414): the turn ended, the mic was
+    /// A Hey Mac mic stopped listening for him (HM-1414): the turn ended, the mic was
     /// stopped or the command dropped. Listening never stays up after that.
     func micClosed(source closed: String) {
         guard let next = PillRules.micClosed(mode: mode, shownFor: source, closed: closed) else { return }
@@ -157,7 +157,7 @@ final class Island: ObservableObject {
         go(next, why: "mic \(closed) closed")
     }
 
-    /// Mic level 0...1 from the Hey Claude listener (the ask recorder is read directly).
+    /// Mic level 0...1 from the Hey Mac listener (the ask recorder is read directly).
     func micLevel(_ v: Float, source: String?) {
         guard source == nil || source == self.source else { return }
         feed.mic = v
@@ -225,7 +225,7 @@ final class Island: ObservableObject {
 
     func idle() { go(.idle) }
 
-    /// A Hey Claude command is about to be typed into a chat: its name and a ring that
+    /// A Hey Mac command is about to be typed into a chat: its name and a ring that
     /// runs out over the countdown. Then `done()` (sent), `error` (not sent) or
     /// `sendCancelled()`. With "Subtitles on Screen" off nothing new appears.
     func sending(to target: String, seconds: Double) {
@@ -248,7 +248,7 @@ final class Island: ObservableObject {
         go(.moon, retrigger: true)
     }
 
-    /// Maps what a conversation or a Hey Claude command ended with.
+    /// Maps what a conversation or a Hey Mac command ended with.
     /// Every outcome folds back or shows what happened (PillRules.ending, HM-1414).
     func finished(_ status: String, error: String?, errorTitle: String? = nil) {
         switch PillRules.ending(status, mode: mode) {
@@ -488,7 +488,7 @@ final class BarFeed {
         lastPush = .distantPast
     }
 
-    /// The level right now: the ask recorder, the Hey Claude listener, or the voice.
+    /// The level right now: the ask recorder, the Hey Mac listener, or the voice.
     func target(speaking: Bool, at date: Date) -> Float {
         if speaking {
             guard !envelope.isEmpty else { return 0 }

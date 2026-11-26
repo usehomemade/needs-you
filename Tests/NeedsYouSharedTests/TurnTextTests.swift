@@ -4,7 +4,7 @@ import XCTest
 final class TurnTextTests: XCTestCase {
     func testOpenEndings() {
         // The cut-offs from 25 Nov (HM-1360).
-        XCTAssertTrue(TurnText.trailsOff("Hey Claude, I think I like."))
+        XCTAssertTrue(TurnText.trailsOff("Hey Mac, I think I like."))
         XCTAssertTrue(TurnText.trailsOff("because right now when I try to."))
         XCTAssertTrue(TurnText.trailsOff("Check the deploy and"))
         XCTAssertTrue(TurnText.trailsOff("So what I want is, um"))

@@ -9,7 +9,7 @@ import SwiftUI
 /// NEEDS_YOU_CLAUDE_DIR points at a test folder.
 ///
 ///   main [--section conversations|voicemails|chats|<project>] [--select first]
-///   settings [--pane general|heyClaude|voice|microphones|models|doNotDisturb|agents|apps]
+///   settings [--pane general|wake|voice|microphones|models|doNotDisturb|agents|apps]
 ///   training
 ///
 /// Prints "window <number> <title>" for each window it shows (screencapture -l).

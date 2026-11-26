@@ -71,7 +71,7 @@ public enum TurnKey {
         public var doNotDisturb = false
         /// Needs You's voice is playing.
         public var speaking = false
-        /// A Hey Claude command is being recorded (after the wake phrase or the shortcut).
+        /// A Hey Mac command is being recorded (after the wake phrase or the shortcut).
         public var commandOpen = false
         /// The mic is open for his answer to an ask or say.
         public var answerOpen = false
@@ -92,7 +92,7 @@ public enum TurnKey {
         case endCommand
         /// End his answer to an ask, like "done".
         case endAnswer
-        /// Open a Hey Claude command, as if he had said the wake phrase.
+        /// Open a Hey Mac command, as if he had said the wake phrase.
         case openCommand
         /// Busy with what he just said: ignore the press.
         case ignore
@@ -110,7 +110,7 @@ public enum TurnKey {
 
 /// How a spoken turn ended early (HM-1353).
 public enum SpeechStop: String, Equatable {
-    /// "Stop, Claude" or the turn shortcut: he takes the floor and gets listened to.
+    /// "Stop, Mac" or the turn shortcut: he takes the floor and gets listened to.
     case voice
     /// Escape: quiet now, nothing more. An open conversation ends.
     case escape

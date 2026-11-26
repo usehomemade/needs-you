@@ -4,7 +4,7 @@ import Combine
 import NeedsYouShared
 import SwiftUI
 
-/// "Hey Claude, <chat>: <message>" -> the message typed into that chat.
+/// "Hey Mac, <chat>: <message>" -> the message typed into that chat.
 @MainActor
 final class VoiceCommands: ObservableObject {
     static let shared = VoiceCommands()
@@ -60,7 +60,7 @@ final class VoiceCommands: ObservableObject {
     private var prepared = false
     private var preparing = false
     private var handling = false
-    /// The turn shortcut opened the mic while "Listen for Hey Claude" is off: on for one command.
+    /// The turn shortcut opened the mic while "Listen for Hey Mac" is off: on for one command.
     private var oneShot = false
     private var cancellables: Set<AnyCancellable> = []
     /// The 2 s before a command is typed into a chat (shown on the island).
@@ -239,7 +239,7 @@ final class VoiceCommands: ObservableObject {
     }
 
     var speechAllowed: Bool { WakeListener.authorized }
-    /// The user is saying a Hey Claude command, or one is being handled or sent.
+    /// The user is saying a Hey Mac command, or one is being handled or sent.
     var userHasFloor: Bool { capturing || handling }
     /// The room mic hears someone talking (gate open), outside a command.
     var hearingSomeone: Bool { listener.isRunning && listener.hearingSomeone }
@@ -516,7 +516,7 @@ final class VoiceCommands: ObservableObject {
                 : "Not sent: the test lock expired or its pane is not a test pane. Re-arm it, or end the test with needs-you wake-test --arm-pane none."
             return record(nil, text: "", transcript: transcript, outcome: .error, error: why)
         }
-        // A message kept after "which chat?" got no clear answer: "Hey Claude, orchard" (or "two") sends it.
+        // A message kept after "which chat?" got no clear answer: "Hey Mac, orchard" (or "two") sends it.
         if !testOnly, let u = unsent, Date().timeIntervalSince(u.at) < 300, let rest = Wake.afterWakeWord(transcript),
            rest.split(separator: " ").count <= 4 { // short: a name or a number for the kept message
             let names = u.options.map { Self.short($0.title) }
@@ -575,7 +575,7 @@ final class VoiceCommands: ObservableObject {
                 await Conductor.shared.speakOnly("Okay, I didn't send it.")
                 return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: why, turns: turns)
             case .unanswered:
-                // Never drop it: it waits for "Hey Claude, <chat>" (or a number) for 5 minutes.
+                // Never drop it: it waits for "Hey Mac, <chat>" (or a number) for 5 minutes.
                 unsent = Unsent(text: text, options: options, at: Date())
                 Sounds.shared.play(.cancelled)
                 Island.shared.error("Not sent", "Say the chat: \u{201C}\(Wake.phrase), \(Self.short(options[0].title))\u{201D}")
@@ -683,7 +683,7 @@ final class VoiceCommands: ObservableObject {
         var r = Response(status: "done"); r.state = "presence: \(p)"; return r
     }
 
-    /// "Hey Claude, new chat in <project>: ..." or nothing matched: open a new claude chat in herdr.
+    /// "Hey Mac, new chat in <project>: ..." or nothing matched: open a new claude chat in herdr.
     private func newChat(project: String?, heardText: String, transcript: String, dryRun: Bool, testOnly: Bool) async -> Response {
         if testOnly && Router.testRoot == nil { return record(nil, text: heardText, transcript: transcript, outcome: .error, error: "New-chat tests need --projects-root <throwaway folder>.") }
         let text = await TranscriptCleaner.clean(heardText)
@@ -740,7 +740,7 @@ final class VoiceCommands: ObservableObject {
         }
     }
 
-    /// "Hey Claude, new chat on Claude desktop, ask ..." / "use ChatGPT to ask ..." (HM-1383).
+    /// "Hey Mac, new chat on Claude desktop, ask ..." / "use ChatGPT to ask ..." (HM-1383).
     private func appChat(_ app: Router.ChatApp, heardText: String, newChat: Bool, transcript: String, dryRun: Bool) async -> Response {
         let text = await TranscriptCleaner.clean(heardText)
         let label = newChat ? "New chat in \(app.title)" : app.title
@@ -825,7 +825,7 @@ final class VoiceCommands: ObservableObject {
 
     private func record(_ target: ChatTarget?, text: String, transcript: String, outcome: Conversation.Outcome, error: String?, turns: [Turn] = []) -> Response {
         var c = Conversation(id: "send-" + UUID().uuidString.prefix(8).lowercased(),
-                             title: target.map { "To \($0.title)" } ?? "Hey Claude",
+                             title: target.map { "To \($0.title)" } ?? "Hey Mac",
                              message: text.isEmpty ? transcript : text, startedAt: Date())
         c.kind = "send"
         c.target = target?.title

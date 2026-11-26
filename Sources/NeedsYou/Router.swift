@@ -314,7 +314,7 @@ enum Router {
     }
 
     /// The message part of a command so far, without the wake phrase. HM-1360: a pause
-    /// right after "Hey Claude, orchard:" is not the end; the message is still coming.
+    /// right after "Hey Mac, orchard:" is not the end; the message is still coming.
     static func messageAfterTarget(_ transcript: String) -> String {
         let rest = (Wake.afterWakeWord(transcript) ?? transcript).trimmingCharacters(in: .whitespacesAndNewlines)
         if rest.hasSuffix(":") { return "" }

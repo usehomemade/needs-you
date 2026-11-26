@@ -148,7 +148,7 @@ struct NeedsYouApp: App {
     }
 }
 
-/// The menu bar icon, with a small dot while the mic is open for "Hey Claude".
+/// The menu bar icon, with a small dot while the mic is open for "Hey Mac".
 struct MenuBarLabel: View {
     @EnvironmentObject var conductor: Conductor
     @ObservedObject var voice = VoiceCommands.shared
@@ -298,6 +298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // so reading a hung app's window element by element could take hours). HM-1418
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
         Prefs.registerDefaults()
+        Wake.migrateDefault() // HM-1428
         AppPresence.registerDefaults()
         AppPresence.apply()
         if Prefs.readOnly { UIDemo.start(); return }

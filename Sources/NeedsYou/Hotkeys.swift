@@ -73,7 +73,7 @@ final class Hotkeys: ObservableObject {
     /// Escape cancels a voice command during its countdown.
     func escapeWhileSending(_ on: Bool) { escapeSending = on; applyEscape() }
 
-    /// Escape while he says a Hey Claude command: start over / cancel (HM-1396).
+    /// Escape while he says a Hey Mac command: start over / cancel (HM-1396).
     func escapeWhileCapturing(_ on: Bool) { escapeCapturing = on; applyEscape() }
 
     /// Escape while he answers a question: start over / voicemail (HM-1396).

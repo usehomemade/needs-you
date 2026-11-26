@@ -16,6 +16,6 @@
 	<key>NSHighResolutionCapable</key><true/>
 	<key>NSPrincipalClass</key><string>NSApplication</string>
 	<key>NSMicrophoneUsageDescription</key><string>Needs You listens for your spoken answer right after an agent asks you something, and only then.</string>
-	<key>NSSpeechRecognitionUsageDescription</key><string>Needs You listens on this Mac for “Hey Claude”. Nothing you say leaves the Mac until you say it.</string>
+	<key>NSSpeechRecognitionUsageDescription</key><string>Needs You listens on this Mac for “Hey Mac”. Nothing you say leaves the Mac until you say it.</string>
 </dict>
 </plist>

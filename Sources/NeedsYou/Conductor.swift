@@ -19,9 +19,9 @@ struct Conversation: Identifiable, Codable, Hashable {
     var outcome: Outcome = .open
     var artifactURL: String?
     var error: String?
-    var kind: String?   // nil = ask, "send" = Hey Claude message
+    var kind: String?   // nil = ask, "send" = Hey Mac message
     var target: String?
-    /// Hey Claude sends: how the chat was chosen (heard name, top matches, why). HM-1364.
+    /// Hey Mac sends: how the chat was chosen (heard name, top matches, why). HM-1364.
     var route: String?
     /// Which agent it came from or went to ("claude", "codex", "cursor", "claude-app", "chatgpt"), for its icon (HM-1384).
     var agent: String?
@@ -88,14 +88,14 @@ final class Conductor: ObservableObject {
 
     private let voice = VoicePlayer()
     private let fallbackPlayer = Player()
-    /// True while Needs You speaks or records (the Hey Claude listener pauses).
+    /// True while Needs You speaks or records (the Hey Mac listener pauses).
     @Published private(set) var micInUse = false
     private var recorder: Recorder?
     /// True while the voice plays (Escape and the turn shortcut can stop it).
     private(set) var voicePlaying = false
     /// How the last spoken turn was cut off (nil: it played to the end).
     private var stoppedBy: SpeechStop?
-    /// The turn shortcut stopped the voice: open his Hey Claude turn when nothing listens after.
+    /// The turn shortcut stopped the voice: open his Hey Mac turn when nothing listens after.
     private var openTurnAfter = false
     @Published private(set) var busy = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -727,7 +727,7 @@ final class Conductor: ObservableObject {
         recorder?.stop()
     }
 
-    /// Cuts the voice off now. `.voice` is the "Stop, Claude" path (he gets listened to);
+    /// Cuts the voice off now. `.voice` is the "Stop, Mac" path (he gets listened to);
     /// `.escape` ends there (HM-1353).
     func stopSpeaking(_ why: SpeechStop, thenOpenTurn: Bool = false) {
         guard voicePlaying else { return }
@@ -767,7 +767,7 @@ final class Conductor: ObservableObject {
 
     // MARK: Steps
 
-    /// Speaks `text`. Returns what was said before "Stop, Claude", or nil if it finished.
+    /// Speaks `text`. Returns what was said before "Stop, Mac", or nil if it finished.
     @discardableResult
     private func speak(_ text: String, _ req: Request, interruptible: Bool = true, usersTurn: Bool = false) async throws -> String? {
         Task.detached(priority: .utility) { try? await LocalSTT.shared.warm() } // ready for the answer
@@ -797,12 +797,12 @@ final class Conductor: ObservableObject {
             return nil
         }
         guard r.interrupted else { return nil }
-        if stoppedBy == nil { stoppedBy = .voice } // "Stop, Claude"
+        if stoppedBy == nil { stoppedBy = .voice } // "Stop, Mac"
         await Sounds.shared.playAndWait(.stopped)
         return r.spokenUntil
     }
 
-    /// Agents never talk over the user: wait while he is speaking a Hey Claude command
+    /// Agents never talk over the user: wait while he is speaking a Hey Mac command
     /// (or one is being sent), and briefly while the room mic hears him talk.
     private func waitForUser() async {
         var plainTalk = 0.0
@@ -1050,7 +1050,7 @@ final class Conductor: ObservableObject {
         if let data = try? LineIO.encoder.encode(history) { try? data.write(to: historyURL, options: .atomic) }
     }
 
-    /// Adds a finished entry (Hey Claude sends) to the history.
+    /// Adds a finished entry (Hey Mac sends) to the history.
     func record(_ convo: Conversation) { save(convo) }
 
     /// A queued voice message reached its chat (HM-1364): "Queued" becomes "Delivered".
@@ -1062,7 +1062,7 @@ final class Conductor: ObservableObject {
         save(c)
     }
 
-    /// Asks one short question by voice for the Hey Claude router, in the queue like any ask.
+    /// Asks one short question by voice for the Hey Mac router, in the queue like any ask.
     /// Part of the user's own turn, so it goes ahead of queued asks (never waits behind one).
     /// The number he pressed while "which chat?" was open (HM-1364).
     private var numberPick: Int?
@@ -1132,14 +1132,14 @@ final class Conductor: ObservableObject {
     // MARK: Own voice
 
     /// Lines he reads to teach the app his voice (about 30 s of speech).
-    static var voiceLines: [String] { voiceLinesTemplate.map { $0.replacingOccurrences(of: "Hey Claude", with: Wake.phrase) } }
+    static var voiceLines: [String] { voiceLinesTemplate.map { $0.replacingOccurrences(of: "Hey Mac", with: Wake.phrase) } }
     static let voiceLinesTemplate = [
-        "Hey Claude.",
-        "Hey Claude, this one: run the tests and tell me what failed.",
-        "Hey Claude, orchard: what's the status of the deploy?",
+        "Hey Mac.",
+        "Hey Mac, this one: run the tests and tell me what failed.",
+        "Hey Mac, orchard: what's the status of the deploy?",
         "I'm teaching this Mac what my voice sounds like, so it can ignore the game and the TV.",
         "Tomorrow I'll check the build, answer a few emails and go for a walk.",
-        "Hey Claude.",
+        "Hey Mac.",
     ]
     /// The line he should read now, shown in Settings while learning.
     @Published private(set) var voiceLine: String?

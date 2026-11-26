@@ -3,7 +3,7 @@ import Foundation
 import NeedsYouShared
 
 /// Lowers other audio (music, videos) while he talks to Needs You (HM-1413): after
-/// "Hey Claude" or the turn shortcut, through his command, and while he answers a
+/// "Hey Mac" or the turn shortcut, through his command, and while he answers a
 /// question or "which chat?". Never during the always-on wake word listening.
 ///
 /// It is the same ducking his music already gets while Needs You speaks: Apple's

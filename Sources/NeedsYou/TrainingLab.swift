@@ -252,7 +252,7 @@ final class TrainingLab: ObservableObject {
     }
 
     /// Clips with a wake phrase: a matcher for the phrase in the line he read
-    /// ("Hey Claude, this one: ..." -> "Hey Claude"); other clips: the current phrase.
+    /// ("Hey Mac, this one: ..." -> "Hey Mac"); other clips: the current phrase.
     nonisolated static func matcher(for c: EvalClip) -> WakeMatcher {
         guard c.hasWake, let cut = c.text.firstIndex(where: { ",.:!?".contains($0) }) else { return Wake.matcher }
         return WakeMatcher(phrase: String(c.text[..<cut]))

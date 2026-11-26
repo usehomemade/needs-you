@@ -3,7 +3,7 @@ import Foundation
 import NeedsYouShared
 import Speech
 
-/// Plays Needs You's voice and listens for "Stop, Claude" while it plays.
+/// Plays Needs You's voice and listens for "Stop, Mac" while it plays.
 ///
 /// The voice goes out through the same engine whose mic has Apple's voice
 /// processing on (echo cancellation), so the detector does not hear Needs You
@@ -13,27 +13,20 @@ import Speech
 final class VoicePlayer {
     struct Result { var interrupted: Bool; var spokenUntil: String }
 
-    /// "Stop, Claude", as the recognizers hear it over speech: "Stop Cloud", "Stuff cloud",
-    /// "Stoploud", "Snow cloud", "Snow clown" (all heard live). Any short s- word right
-    /// before the name counts; it only listens while Needs You is talking.
-    static let stopPattern = #"(?i)\bs[a-z]{0,5}[\s,.!-]*(claude|claud|clawd|cloud|clouds|clod|clown|clawed|clyde|klaud|klod|claw)\b|\bstoploud\b"#
 
     /// A lone "Stop." heard on its own: the recognizer often gives "Stop" a second
-    /// or more before it settles on "Claude". Only used when the spoken text has no "stop".
+    /// or more before it settles on the name. Only used when the spoken text has no "stop".
     static let bareStopPattern = #"(?i)(^|[.!?]\s*)stop[.!]?\s*$"#
 
-    /// "Stop, Claude" always works (Claude is the agent's name); with another wake
-    /// phrase, "Stop, <its name>" ("Stop, Baby") works too.
+    /// "Stop, <name>" from the wake phrase ("Stop, Mac" by default), mishearings
+    /// included (WakeMatcher.isStop). It only listens while Needs You is talking.
     static func isStop(_ heard: String) -> Bool {
-        if heard.range(of: stopPattern, options: .regularExpression) != nil { return true }
-        let m = Wake.matcher
-        guard !m.isDefault, let name = m.words.last, name.count >= 3 else { return false }
-        return heard.range(of: #"(?i)\bstop[\s,.!-]*"# + NSRegularExpression.escapedPattern(for: name) + #"\b"#, options: [.regularExpression, .diacriticInsensitive]) != nil
+        Wake.matcher.isStop(heard, voiceLearned: SpeakerID.isEnrolled)
     }
     private var bareStopOK = false
     private var spoken = ""
 
-    /// "Stop, Claude" from him: a stop phrase that is not the voice's own words leaking back.
+    /// "Stop, Mac" from him: a stop phrase that is not the voice's own words leaking back.
     private func heardStop(_ heard: String, fast: Bool) -> Bool {
         let stop = Self.isStop(heard) || (bareStopOK && heard.range(of: Self.bareStopPattern, options: .regularExpression) != nil)
         guard stop else { return false }
@@ -52,7 +45,7 @@ final class VoicePlayer {
     private var continuation: CheckedContinuation<Bool, Never>?
     private var finished = false
 
-    /// Plays `audio` (WAV or MP3). With `listen`, "Stop, Claude" ends it early.
+    /// Plays `audio` (WAV or MP3). With `listen`, "Stop, Mac" ends it early.
     func play(_ audio: Data, text: String, volume: Float, listen: Bool) async throws -> Result {
         let ext = audio.prefix(4) == Data("RIFF".utf8) ? "wav" : "mp3"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("needs-you-voice-\(UUID().uuidString).\(ext)")
@@ -66,12 +59,12 @@ final class VoicePlayer {
         let total = Double(buf.frameLength) / file.processingFormat.sampleRate
 
         // What is being said: the detector ignores words that come from it (HM-1410),
-        // so a line that contains "Stop, Claude" no longer turns the detector off.
+        // so a line that contains "Stop, Mac" no longer turns the detector off.
         spoken = text
         var detecting = listen && WakeListener.authorized
         bareStopOK = text.range(of: #"(?i)\bstop"#, options: .regularExpression) == nil
         if detecting, #available(macOS 26, *), WakeListener.analyzerFormatCache == nil {
-            // Hey Claude may be off: load the on-device model's format once.
+            // Hey Mac may be off: load the on-device model's format once.
             try? await WakeListener().prepare()
         }
         if WakeListener.analyzerFormatCache == nil { detecting = false }

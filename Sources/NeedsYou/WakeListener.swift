@@ -4,13 +4,13 @@ import os
 import Speech
 import NeedsYouShared
 
-/// Always-on "Hey Claude" listener.
+/// Always-on "Hey Mac" listener.
 ///
 /// Everything before the wake word stays on the Mac: a cheap energy gate wakes
 /// Apple's on-device SpeechAnalyzer (SpeechTranscriber, macOS 26+; it does not
 /// need Siri or Dictation, unlike SFSpeechRecognizer) only while someone is
 /// talking, and only that model hears the audio. After "Hey
-/// Claude" it keeps recording the same utterance until a long pause, then hands
+/// Mac" it keeps recording the same utterance until a long pause, then hands
 /// the WAV of the whole utterance to `onCommand` (transcribed on the Mac).
 final class WakeListener {
     enum Mode { case gate, hearing, pending, command, cancelWatch }
@@ -260,7 +260,7 @@ final class WakeListener {
         case .gate:
             preroll.append(buf); prerollFrames += buf.frameLength
             // 2 s before the onset: far away, "Hey" can stay under the gate and only
-            // "Claude" opens it, so a long pre-roll keeps the whole wake word.
+            // the name opens it, so a long pre-roll keeps the whole wake word.
             while prerollFrames > 32_000, preroll.count > 1 { prerollFrames -= preroll.removeFirst().frameLength }
             loudRun = loud ? loudRun + dt : 0
             // Silero already needs a 256 ms chunk of speech; the level gate needs 0.15 s.
@@ -278,7 +278,7 @@ final class WakeListener {
             segmentTime += dt
             quietRun = quiet ? quietRun + dt : 0
             // Second opinion: Parakeet re-reads the last 4 s every 1.5 s. Catches a
-            // far-field or noisy "Hey Claude" that SpeechAnalyzer misses.
+            // far-field or noisy "Hey Mac" that SpeechAnalyzer misses.
             if segmentTime - lastCheck >= 1.5 { lastCheck = segmentTime; secondOpinion() }
             // Right after the analyzer heard a "Hey": Parakeet back to back for 2 s,
             // so a misheard "Hey Mom" / "Hey bro" is re-read within ~0.6 s (HM-1344).
@@ -302,7 +302,7 @@ final class WakeListener {
             quietRun = quiet ? quietRun + dt : 0
             if pendingTime >= 2.5 {
                 // He kept talking while the last segment was closing: start a new
-                // segment with that audio, so a "Hey Claude" said in this window
+                // segment with that audio, so a "Hey Mac" said in this window
                 // (and the words after it) is not lost.
                 let resumed = loud || quietRun < 1.0
                 // Overlap: the end of the last segment too, so a wake word cut at
@@ -584,7 +584,7 @@ final class WakeListener {
         case .hearing where Wake.containsWakeWord(text):
             wake()
         case .hearing where Wake.startsWakeWord(text):
-            // "Hey Cl…" as the newest partial: the rest of "Claude" takes the
+            // "Hey Ba…" as the newest partial: the rest of the name takes the
             // analyzer up to a second more (HM-1344). Needs his voice, like every wake.
             log("wake on partial")
             wake()
@@ -762,7 +762,7 @@ final class WakeListener {
     }
 
     private func commitWake(notify: Bool = true, manual: Bool = false) {
-        // A thinking pause right after "Hey Claude," is normal (HM-1360): 4 s, not 2.5.
+        // A thinking pause right after "Hey Mac," is normal (HM-1360): 4 s, not 2.5.
         noSpeechLimit = manual ? 6 : 4
         sessionCancel()
         otherSince = nil; otherRun = 0; speechLog = []; lastSpeakerCheck = 0
@@ -776,7 +776,7 @@ final class WakeListener {
         gate.holdOpen = { [weak self] _ in
             guard let self else { return false }
             // The command so far, from a second before the wake: a pause right after
-            // "Hey Claude, this one:" has no words of the message yet.
+            // "Hey Mac, this one:" has no words of the message yet.
             let (lang, clip) = self.q.sync { (self.commandLanguage, Array(self.samples[max(0, self.wakeIndex - 16_000)...].suffix(128_000))) }
             var (open, text) = await EndOfTurn.heldOpen(clip, language: lang)
             if !open, !text.isEmpty, Router.messageAfterTarget(text).isEmpty {
@@ -833,13 +833,20 @@ final class WakeListener {
     }
 }
 
-/// The wake phrase (Settings → Hey Claude → Wake phrase, default "Hey Claude")
+/// The wake phrase (Settings → Hey Mac → Wake phrase, default "Hey Mac")
 /// and its matcher (NeedsYouShared/WakeMatcher.swift).
 enum Wake {
     static let defaultsKey = "wakePhrase"
     private static let lock = NSLock()
     nonisolated(unsafe) private static var cached = WakeMatcher(phrase: WakeMatcher.defaultPhrase)
     nonisolated(unsafe) private static var cachedRaw = WakeMatcher.defaultPhrase
+
+    /// HM-1428: the default moved from the old phrase to "Hey Mac". A stored phrase
+    /// equal to the old default moves too; a custom one stays.
+    static func migrateDefault(_ defaults: UserDefaults = .standard) {
+        guard let new = WakeMatcher.migrated(defaults.string(forKey: defaultsKey)) else { return }
+        defaults.set(new, forKey: defaultsKey)
+    }
 
     /// The matcher for the phrase in Settings (rebuilt when it changes).
     static var matcher: WakeMatcher {
@@ -849,9 +856,9 @@ enum Wake {
             return cached
         }
     }
-    /// The phrase as he set it, e.g. "Hey Claude".
+    /// The phrase as he set it, e.g. "Hey Mac".
     static var phrase: String { matcher.phrase }
-    /// The name in it ("Claude").
+    /// The name in it ("Mac").
     static var name: String { matcher.name }
 
     static func wakeRange(_ text: String) -> Range<String.Index>? {
@@ -903,7 +910,7 @@ final class AnalyzerSession {
                 let analyzer = SpeechAnalyzer(modules: [transcriber])
                 // Bias toward the words that matter here (ignored where unsupported).
                 let context = AnalysisContext()
-                context.contextualStrings[.general] = Wake.matcher.contextualStrings + ["Stop Claude"] + Names.vocabulary
+                context.contextualStrings[.general] = Wake.matcher.contextualStrings + ["Stop \(Wake.name)"] + Names.vocabulary
                 try? await analyzer.setContext(context)
                 try await analyzer.start(inputSequence: stream)
                 var finals = ""

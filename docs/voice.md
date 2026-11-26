@@ -1,14 +1,14 @@
 # Voice
 
-## Hey Claude
+## Hey Mac
 
-Turn on "Listen for Hey Claude" in the menu bar or in Settings. Then say:
+Turn on "Listen for Hey Mac" in the menu bar or in Settings. Then say:
 
-- "Hey Claude, this one: run the tests again" goes to the chat in front.
-- "Hey Claude, garden planner: order the seeds for Friday" goes to the chat whose title, folder or terminal tab matches.
-- "Hey Claude, new chat in website: look at the failing deploy" opens a new terminal tab in the closest folder under `~/Projects` and starts `claude` with your message.
-- "Hey Claude, new chat on Claude desktop, ask what the weather is like" or "Hey Claude, use ChatGPT to ask how my business is doing" opens the app (if needed), starts a new chat there with its New Chat menu item and types the question. An app without the Needs You MCP server can't answer out loud, so the voice line is left off and the app stays in front.
-- "Hey Claude, how is the orchard linter going" names no chat: the on-device model picks one by topic. It sends without asking when the model's pick shares the most words with the message (folder, tab, title, what the chat works on); otherwise it asks which chat.
+- "Hey Mac, this one: run the tests again" goes to the chat in front.
+- "Hey Mac, garden planner: order the seeds for Friday" goes to the chat whose title, folder or terminal tab matches.
+- "Hey Mac, new chat in website: look at the failing deploy" opens a new terminal tab in the closest folder under `~/Projects` and starts `claude` with your message.
+- "Hey Mac, new chat on Claude desktop, ask what the weather is like" or "Hey Mac, use ChatGPT to ask how my business is doing" opens the app (if needed), starts a new chat there with its New Chat menu item and types the question. An app without the Needs You MCP server can't answer out loud, so the voice line is left off and the app stays in front.
+- "Hey Mac, how is the orchard linter going" names no chat: the on-device model picks one by topic. It sends without asking when the model's pick shares the most words with the message (folder, tab, title, what the chat works on); otherwise it asks which chat.
 
 If the chat is idle (its turn has ended), the message is typed into it, in whatever app shows it (see below). If it is busy, or a check fails, the message waits in that chat's inbox and arrives on its next tool call, turn end or prompt. For 2 seconds before it is sent, the island shows the chat it goes to. Esc or saying "cancel" stops it. Every message ends with a line telling the agent it came by voice, so it answers out loud.
 
@@ -29,33 +29,33 @@ Which chats can be reached:
 
 - Claude Code and Codex in a terminal, and Cursor's agent chat: connect them in Settings, Agents. Codex asks once, in the chat, to trust the new hooks; until you trust them Codex never reports that it is idle, so messages wait for its next MCP call.
 - Cursor runs its hooks in another process than its MCP server; a hook joins the MCP chat open in the same folder.
-- The Claude app and the ChatGPT app have no hooks: say their name ("Hey Claude, ChatGPT: ..."). The message goes into the chat that is open there. They are never picked as "this one".
+- The Claude app and the ChatGPT app have no hooks: say their name ("Hey Mac, ChatGPT: ..."). The message goes into the chat that is open there. They are never picked as "this one".
 
-Change the phrase in Settings, Hey Claude, Wake phrase. The field warns about phrases that are very short or common ("hey you", "hey Siri"). Test listens for 20 seconds and shows what it heard.
+Change the phrase in Settings, Hey Mac, Wake phrase. The field warns about phrases that are very short or common ("hey you", "hey Siri"). Test listens for 20 seconds and shows what it heard.
 
 Speech before the wake word is recognized on the Mac with Apple's SpeechAnalyzer (macOS 26 or later). After the wake word, Whisper large-v3-turbo transcribes your words.
 
 ## Your voice
 
-Settings, Hey Claude, Learn My Voice reads six short lines for you to repeat (about a minute). After that, "Hey Claude" only counts in your voice, and your turn ends when only other voices are left.
+Settings, Hey Mac, Learn My Voice reads six short lines for you to repeat (about a minute). After that, "Hey Mac" only counts in your voice, and your turn ends when only other voices are left.
 
 Training (Window, Training) records up to 30 minutes of your voice while music, a game or a video plays. Learn From Recordings then improves the voiceprint.
 
 ## Your turn shortcut
 
-Default Option+Shift+Space, changeable in Settings, Hey Claude. It does the same as the wake phrase without the wake word or the voice check, and works even when listening is off. Press it again to finish.
+Default Option+Shift+Space, changeable in Settings, Hey Mac. It does the same as the wake phrase without the wake word or the voice check, and works even when listening is off. Press it again to finish.
 
 ## Interrupting
 
-Say "Stop, Claude" while it speaks, or press Escape. See [Agents](agents.md#interrupting) for what the agent receives.
+Say "Stop, Mac" while it speaks, or press Escape. See [Agents](agents.md#interrupting) for what the agent receives.
 
-While you talk, press Escape to throw away what you said and start over. Press it twice quickly to stop: a command you started ("Hey Claude, …") is cancelled and nothing is sent; an agent's question is kept as a voicemail.
+While you talk, press Escape to throw away what you said and start over. Press it twice quickly to stop: a command you started ("Hey Mac, …") is cancelled and nothing is sent; an agent's question is kept as a voicemail.
 
 ## Do not disturb
 
-Say "Hey Claude, good night" or "do not disturb", or use the switch in the menu bar or Settings. The menu bar icon becomes a moon. It has no timer and survives restarts. While on, agents can't speak, play sounds or open the mic. What they wanted to say is kept as voicemails.
+Say "Hey Mac, good night" or "do not disturb", or use the switch in the menu bar or Settings. The menu bar icon becomes a moon. It has no timer and survives restarts. While on, agents can't speak, play sounds or open the mic. What they wanted to say is kept as voicemails.
 
-"Hey Claude, I'm back" or "good morning" turns it off and reads the voicemails in order. After each one you have 8 seconds to answer, and the answer is typed into that agent's chat. Say "next" to skip or "stop" to keep the rest for later. "Hey Claude, what did you work on last night?" speaks a summary per chat.
+"Hey Mac, I'm back" or "good morning" turns it off and reads the voicemails in order. After each one you have 8 seconds to answer, and the answer is typed into that agent's chat. Say "next" to skip or "stop" to keep the rest for later. "Hey Mac, what did you work on last night?" speaks a summary per chat.
 
 ## Languages
 

@@ -5,7 +5,7 @@ import WhisperKit
 
 /// Which language a transcription is in (HM-1351).
 enum STTLanguage: Sendable, Equatable {
-    /// English, always: the wake check, "Stop, Claude", voice enrollment lines.
+    /// English, always: the wake check, "Stop, Mac", voice enrollment lines.
     case english
     /// His words: the languages he turned on (Settings → Voice → Languages I Speak).
     /// One: forced to it (English only = as before). Several: Whisper picks the

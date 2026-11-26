@@ -20,7 +20,7 @@ struct TrainingPrompt: Codable, Hashable {
 
 enum TrainingPrompts {
     /// One round, about 3 minutes; it repeats for longer sessions.
-    /// The lines with his wake phrase in place of "Hey Claude".
+    /// The lines with his wake phrase in place of "Hey Mac".
     /// Lines with the user's name are left out when no name is set.
     static var round: [TrainingPrompt] {
         let name = UserName.value
@@ -30,30 +30,30 @@ enum TrainingPrompts {
                 guard let name else { return nil }
                 p.text = p.text.replacingOccurrences(of: "{name}", with: name)
             }
-            p.text = p.text.replacingOccurrences(of: "Hey Claude", with: Wake.phrase)
+            p.text = p.text.replacingOccurrences(of: "Hey Mac", with: Wake.phrase)
             return p
         }
     }
     static let roundTemplate: [TrainingPrompt] = [
-        .init(kind: .wake, text: "Hey Claude."),
-        .init(kind: .command, text: "Hey Claude, this one: run the tests."),
+        .init(kind: .wake, text: "Hey Mac."),
+        .init(kind: .command, text: "Hey Mac, this one: run the tests."),
         .init(kind: .silent, text: "Don't speak.", auto: 10),
         .init(kind: .name, text: "{name} here. Please check the build."),
-        .init(kind: .command, text: "Hey Claude, website: what's the status of the deploy?"),
-        .init(kind: .wake, text: "Hey Claude."),
-        .init(kind: .command, text: "Hey Claude, this one: merge it into next and promote it."),
+        .init(kind: .command, text: "Hey Mac, website: what's the status of the deploy?"),
+        .init(kind: .wake, text: "Hey Mac."),
+        .init(kind: .command, text: "Hey Mac, this one: merge it into next and promote it."),
         .init(kind: .free, text: "What are you doing right now?", auto: 20),
-        .init(kind: .command, text: "Hey Claude, this one: stop the dev server, then restart it."),
+        .init(kind: .command, text: "Hey Mac, this one: stop the dev server, then restart it."),
         .init(kind: .name, text: "Ask {name} before you change anything on the server."),
         .init(kind: .silent, text: "Don't speak.", auto: 10),
-        .init(kind: .command, text: "Hey Claude, needs you: read me the last answer again."),
-        .init(kind: .wake, text: "Hey Claude, done."),
-        .init(kind: .command, text: "Hey Claude, this one: open the pull request and tell me if it's green."),
+        .init(kind: .command, text: "Hey Mac, needs you: read me the last answer again."),
+        .init(kind: .wake, text: "Hey Mac, done."),
+        .init(kind: .command, text: "Hey Mac, this one: open the pull request and tell me if it's green."),
         .init(kind: .free, text: "What did you eat today?", auto: 20),
-        .init(kind: .command, text: "Hey Claude, website: show me the errors from the last hour."),
+        .init(kind: .command, text: "Hey Mac, website: show me the errors from the last hour."),
         .init(kind: .name, text: "This is {name}. Send the invoice tomorrow."),
-        .init(kind: .wake, text: "Hey Claude."),
-        .init(kind: .command, text: "Hey Claude, this one: that's all for now, thanks."),
+        .init(kind: .wake, text: "Hey Mac."),
+        .init(kind: .command, text: "Hey Mac, this one: that's all for now, thanks."),
     ]
 
     static func at(_ i: Int) -> TrainingPrompt { round[i % round.count] }

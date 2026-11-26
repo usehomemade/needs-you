@@ -175,7 +175,7 @@ enum MenuStatus {
             return (dnd.state.goodNight ? "Good Night" : "Do Not Disturb") + since
         }
         if voice.capturing { return "Listening to you" }
-        if voice.enabled { return voice.armed ? "Listening for \u{201C}\(Wake.phrase)\u{201D}" : "Hey Claude: \(voice.status)" }
+        if voice.enabled { return voice.armed ? "Listening for \u{201C}\(Wake.phrase)\u{201D}" : "Hey Mac: \(voice.status)" }
         return "Ready"
     }
 
@@ -209,7 +209,7 @@ extension Conversation {
     /// What the list shows as the sender: the folder, else the chat or agent.
     var sender: String {
         if let folder { return folder }
-        if kind == "send" { return target ?? "Hey Claude" }
+        if kind == "send" { return target ?? "Hey Mac" }
         return AgentApp.name(agent).map { "\($0) in your home folder" } ?? "Home folder"
     }
 

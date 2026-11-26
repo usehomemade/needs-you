@@ -42,7 +42,7 @@ final class Subtitles: ObservableObject {
 
     // MARK: The user
 
-    /// The mic opened for him (after "Hey Claude", or an ask waits for his answer).
+    /// The mic opened for him (after "Hey Mac", or an ask waits for his answer).
     func userBegan(source: String) {
         Island.shared.listening(source: source)
         guard Self.enabled else { return }
@@ -138,7 +138,7 @@ final class Subtitles: ObservableObject {
         }
     }
 
-    /// Playback ended (finished, or "Stop, Claude").
+    /// Playback ended (finished, or "Stop, Mac").
     func claudeDone() {
         Island.shared.claudeDone()
         claudeTask?.cancel(); claudeTask = nil
@@ -331,7 +331,7 @@ final class Subtitles: ObservableObject {
 
     /// `needs-you voice-test --title overlay-demo`: both sides with sample text, no audio.
     func demo() async {
-        let saidText = "Hey Claude, orchard: check why the staging deploy failed and fix the migration if it is the cause"
+        let saidText = "Hey Mac, orchard: check why the staging deploy failed and fix the migration if it is the cause"
         let words = saidText.split(separator: " ")
         userBegan(source: "demo")
         for n in stride(from: 3, through: words.count, by: 2) {

@@ -62,7 +62,7 @@ import FoundationModels
             _ = k; return v
         }
         if let t = running[key] { return await t.value }
-        // A session warmed on "Hey Claude" (instructions already loaded) is used once.
+        // A session warmed on "Hey Mac" (instructions already loaded) is used once.
         let warm = warmed; warmed = nil
         let t = Task { await Self.ask(rest, targets, warm: warm) }
         running[key] = t

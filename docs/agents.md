@@ -35,7 +35,7 @@ Keep calling `say` while the person keeps talking, and call `done` when they fin
 
 ## Interrupting
 
-Saying "Stop, Claude" while it speaks cuts the voice off and listens. The agent gets `"status":"interrupted"` with `spoken_until` (roughly what was heard) and the `transcript` of what the person said next. The conversation stays open, so answer with `say`.
+Saying "Stop, Mac" while it speaks cuts the voice off and listens. The agent gets `"status":"interrupted"` with `spoken_until` (roughly what was heard) and the `transcript` of what the person said next. The conversation stays open, so answer with `say`.
 
 Escape also stops the voice, from any app. Nothing listens afterwards and the conversation ends. The agent gets an empty transcript and a `state` saying so.
 
@@ -75,5 +75,5 @@ For development only: `--mute`, `--tts-out <file>`, `--input-file <audio>`, `--s
 
 ## Chat apps
 
-- **Claude app**: Settings, Agents, Claude app adds the Needs You MCP server to `~/Library/Application Support/Claude/claude_desktop_config.json` (a backup is kept). The app reads it at launch, so Settings offers Restart Claude. Its chats can then answer out loud. The app runs one server for all its chats, so it never shows up as a chat of its own; voice reaches it as an app ("Hey Claude, new chat on Claude desktop, ...").
-- **ChatGPT app**: its Codex tasks read `~/.codex/config.toml`, so the Codex switch covers them. Plain ChatGPT chats only take connectors on the internet and can't reach a server on this Mac. "Hey Claude, use ChatGPT to ask ..." still opens a new chat and types the question; the answer stays on screen.
+- **Claude app**: Settings, Agents, Claude app adds the Needs You MCP server to `~/Library/Application Support/Claude/claude_desktop_config.json` (a backup is kept). The app reads it at launch, so Settings offers Restart Claude. Its chats can then answer out loud. The app runs one server for all its chats, so it never shows up as a chat of its own; voice reaches it as an app ("Hey Mac, new chat on Claude desktop, ...").
+- **ChatGPT app**: its Codex tasks read `~/.codex/config.toml`, so the Codex switch covers them. Plain ChatGPT chats only take connectors on the internet and can't reach a server on this Mac. "Hey Mac, use ChatGPT to ask ..." still opens a new chat and types the question; the answer stays on screen.

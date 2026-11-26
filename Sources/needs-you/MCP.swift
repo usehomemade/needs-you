@@ -62,7 +62,7 @@ final class MCPServer {
 
     private func register(_ event: String, status: String? = nil) {
         // The Claude app runs one server for all its chats (HM-1385): it is reached as an
-        // app ("Hey Claude, new chat on Claude desktop"), never as a registered chat.
+        // app ("Hey Mac, new chat on Claude desktop"), never as a registered chat.
         if kind == "claude-app" { return }
         var r = Request(command: .register)
         var u = update(event)

@@ -12,7 +12,7 @@ enum Cue: String, CaseIterable {
     case sent        // delivered
     case cancelled   // not sent
     case noAnswer    // gave up
-    case stopped     // "Stop, Claude": voice cut, now listening
+    case stopped     // "Stop, Mac": voice cut, now listening
     case dndOn       // do not disturb turned on
     case dndOff      // do not disturb turned off
 

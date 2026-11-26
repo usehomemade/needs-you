@@ -17,7 +17,7 @@ final class SpeechTextTests: XCTestCase {
             "Got it. Apple style version three it is, but all of it lower and bassier.",
             "Sorry Zoë, my last message quoted your phrase, which turned the detector off, so that one did not count.",
             "Okay, removing ElevenLabs. Idle it uses about 30 megabytes and the same few percent CPU as before.",
-            "Try four missed: I heard Hey God instead of Hey Claude.",
+            "Try four missed: I heard Hey God instead of Hey Mac.",
             "I only caught 'I think I like'. Which set: Cuelume, Minimal, Soft, or Apple style?",
             "Sentence 5: Please ask Neşe before you change anything on the server.",
             "PS4 is an open model that pulls your voice out of game noise.",

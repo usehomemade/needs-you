@@ -33,7 +33,7 @@ public enum PillRules {
         return .thinking
     }
 
-    /// What the island does when a Hey Claude command or a conversation ends.
+    /// What the island does when a Hey Mac command or a conversation ends.
     public enum Ending: Equatable, Sendable {
         /// Leave what is shown (the "Queued for ..." check, an error already on screen).
         case keep

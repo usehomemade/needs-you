@@ -224,7 +224,7 @@ final class Recorder {
                   let conv = AVAudioConverter(from: inFormat, to: Self.outFormat) else {
                 throw NSError(domain: "NeedsYou", code: 1, userInfo: [NSLocalizedDescriptionKey: "No microphone input available"])
             }
-            // Gate on Apple's voice isolation level, like the Hey Claude listener.
+            // Gate on Apple's voice isolation level, like the Hey Mac listener.
             meter = (iso && (UserDefaults.standard.object(forKey: "noiseReduction") as? Bool ?? true)) ? IsoMeter() : nil
             isoActive = meter != nil
             input.installTap(onBus: 0, bufferSize: 2048, format: inFormat) { [weak self] buffer, _ in
