@@ -7,7 +7,7 @@ import SwiftUI
 
 /// Window > Router Debug (⌥⌘D): every place a voice message can reach, and a playground that
 /// runs the real router on typed text. Nothing is sent from here.
-/// Local builds only (the owner, 26 Nov): a release build (it has an update feed) shows neither
+/// Local builds only (26 Nov): a release build (it has an update feed) shows neither
 /// the menu item nor the window.
 struct DebugView: View {
     /// Builds from scripts/install.sh or swift build; never a published release.
@@ -220,27 +220,20 @@ struct RouterDebug: View {
         guard let rest = Wake.afterWakeWord(transcript) else {
             return RouteTrial(text: input, outcome: "No wake phrase", message: nil, steps: [], ranked: [], ms: 0)
         }
-        if let p = PresenceCommand.parse(rest) {
-            return RouteTrial(text: input, outcome: "Voice command: \(p)", message: nil, steps: [], ranked: [], ms: Int(Date().timeIntervalSince(t0) * 1000))
-        }
         let targets = await Router.voiceTargets()
         let candidates = targets.map(\.candidate)
         var steps: [(String, String)] = [("Targets", "\(targets.count): " + targets.prefix(12).enumerated().map { "\($0.offset + 1) \($0.element.title)" }.joined(separator: ", "))]
-        if let a = Router.appCommand(rest) {
-            steps.append(("App command", a.1))
-        }
-        let (fast, fastLog) = ChatMatcher.route(rest, candidates)
-        steps.append(("Matcher", describe(fast, targets) + " \u{2014} " + fastLog))
-        if let i = ChatMatcher.topic(rest, candidates) { steps.append(("Topic", "\(i + 1) \(targets[i].title)")) } else { steps.append(("Topic", "none (no chat clearly shares its words)")) }
+        if let i = ChatMatcher.topic(rest, candidates) { steps.append(("Topic", "\(i + 1) \(targets[i].title)")) } else { steps.append(("Topic", "none (no chat clearly shares its rare words)")) }
         let tm = Date()
-        let model = await ModelRouter.shared.pick(rest, targets)
+        let intent = await ModelRouter.shared.pick(rest, targets)
         let modelMs = Int(Date().timeIntervalSince(tm) * 1000)
-        if let m = model {
-            steps.append(("Model", "\(m.index + 1) \(targets[m.index].title)\(m.newChat ? ", new chat" : "") \u{00B7} \u{201C}\(m.message)\u{201D} \u{00B7} \(modelMs) ms"))
+        if let m = intent {
+            let chat = m.chat.map { "\($0 + 1) \(targets[$0].title)" } ?? "no chat"
+            steps.append(("Model", "\(m.action.rawValue) \u{00B7} \(chat)\(m.named.isEmpty ? "" : " \u{00B7} named \u{201C}\(m.named)\u{201D}")\(m.meansFront ? " \u{00B7} the chat in front" : "") \u{00B7} \u{201C}\(m.message)\u{201D} \u{00B7} \(modelMs) ms"))
         } else {
-            steps.append(("Model", ModelRouter.available ? "no pick (\(modelMs) ms)" : "not available"))
+            steps.append(("Model", ModelRouter.available ? "no answer (\(modelMs) ms)" : "not available"))
         }
-        let words = RoutingMemory.words(rest: rest)
+        let words = RoutingMemory.words(rest: rest, heardName: intent?.named ?? "")
         if let key = RoutingMemoryStore.shared.lookup(words), let i = targets.firstIndex(where: { $0.memoryKey == key }) {
             steps.append(("Memory", "\u{201C}\(words)\u{201D} meant \(i + 1) \(targets[i].title) before"))
         }
@@ -255,19 +248,10 @@ struct RouterDebug: View {
         case .nothing(let why): outcome = "Not sent: \(why)"; message = nil
         case .newChat(let p, let m): outcome = "New chat in \(p ?? "your home folder") (herdr)"; message = m
         case .app(let a, let m, let fresh): outcome = fresh ? "New chat in \(a.title)" : "Type into \(a.title)"; message = m
+        case .presence(let p): outcome = "Voice command: \(p)"; message = nil
         }
-        var heard = rest
-        if let colon = rest.firstIndex(of: ":") { heard = String(rest[..<colon]) }
-        let ranked = ChatMatcher.rank(heard, candidates).prefix(5).filter { $0.score > 0 }.map { (targets[$0.index].title, $0.score, $0.field) }
+        let named = intent?.named ?? ""
+        let ranked = named.isEmpty ? [] : ChatMatcher.rank(named, candidates).prefix(5).filter { $0.score > 0 }.map { (targets[$0.index].title, $0.score, $0.field) }
         return RouteTrial(text: input, outcome: outcome, message: message, steps: steps, ranked: Array(ranked), ms: Int(Date().timeIntervalSince(t0) * 1000))
-    }
-
-    static func describe(_ r: ChatMatcher.Route, _ t: [ChatTarget]) -> String {
-        switch r {
-        case .named(let i, _): return "named \(i + 1) \(t[i].title)"
-        case .front(let i, _): return i.map { "no name, used last is \($0 + 1) \(t[$0].title)" } ?? "no name"
-        case .choose(let idx, _, let h): return "unsure about \u{201C}\(h)\u{201D}: " + idx.map { "\($0 + 1)" }.joined(separator: ", ")
-        case .newChat(let p, _): return "new chat in \(p ?? "home folder")"
-        }
     }
 }

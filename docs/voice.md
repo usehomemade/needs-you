@@ -5,7 +5,7 @@
 Turn on "Listen for Hey Claude" in the menu bar or in Settings. Then say:
 
 - "Hey Claude, this one: run the tests again" goes to the chat in front.
-- "Hey Claude, trip planner: book the hotel for Friday" goes to the chat whose title, folder or terminal tab matches.
+- "Hey Claude, garden planner: order the seeds for Friday" goes to the chat whose title, folder or terminal tab matches.
 - "Hey Claude, new chat in website: look at the failing deploy" opens a new terminal tab in the closest folder under `~/Projects` and starts `claude` with your message.
 - "Hey Claude, new chat on Claude desktop, ask what the weather is like" or "Hey Claude, use ChatGPT to ask how my business is doing" opens the app (if needed), starts a new chat there with its New Chat menu item and types the question. An app without the Needs You MCP server can't answer out loud, so the voice line is left off and the app stays in front.
 - "Hey Claude, how is the orchard linter going" names no chat: the on-device model picks one by topic. It sends without asking when the model's pick shares the most words with the message (folder, tab, title, what the chat works on); otherwise it asks which chat.

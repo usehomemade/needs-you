@@ -94,12 +94,6 @@ final class HookSetupTests: XCTestCase {
 }
 
 final class ListChatsTests: XCTestCase {
-    func testParses() {
-        for s in ["list my chats", "which chats are open", "what are my chats", "show me my open chats", "my chats"] {
-            XCTAssertEqual(PresenceCommand.parse(s), .listChats, s)
-        }
-        XCTAssertNil(PresenceCommand.parse("this one: list my chats in the readme and fix the table"))
-    }
 
     func testLine() {
         XCTAssertTrue(ChatsSpeech.line([]).hasPrefix("No chats are connected"))

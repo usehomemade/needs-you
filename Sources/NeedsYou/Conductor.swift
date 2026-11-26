@@ -501,11 +501,8 @@ final class Conductor: ObservableObject {
                 return await VoiceCommands.shared.route(text, dryRun: false, testOnly: true)
             }
             if req.vadFile == nil, let text = req.context {
-                // Parse-only test: where would this transcript go?
-                if let rest = Wake.afterWakeWord(text), let p = PresenceCommand.parse(rest) {
-                    var r = Response(status: "dry_run"); r.state = "presence: \(p)"; return r
-                }
-                // Same targets and router as a live command (matcher, model, memory), nothing sent.
+                // Parse-only test: where would this transcript go? Same targets and router as a
+                // live command (model, topic, memory), nothing sent.
                 let targets = await Router.voiceTargets()
                 var r = Response(status: "dry_run")
                 let (parsed, log) = await Router.parseSmart(text, targets: targets)
@@ -517,6 +514,7 @@ final class Conductor: ObservableObject {
                 case .nothing(let why): r.status = "nothing"; r.error = why
                 case .newChat(let name, let m): r.status = "new_chat"; r.state = name ?? "~"; r.transcript = m
                 case .app(let a, let m, let fresh): r.status = fresh ? "app_new_chat" : "app"; r.state = a.title; r.transcript = m
+                case .presence(let p): r.state = "presence: \(p)"
                 }
                 return r
             }

@@ -4,16 +4,11 @@ import NeedsYouShared
 import FoundationModels
 #endif
 
-/// Picks the chat a voice message is for with Apple's on-device model (HM-1364).
+/// Reads every voice command with Apple's on-device model (HM-1364, HM-1399): what he
+/// wants (a message for a chat, a new chat, do not disturb, ...), which chat, and the message.
 /// Nothing leaves the Mac. It starts on the partial transcript while he is still
 /// talking, so the pick is usually ready when he stops (about half a second on an
-/// M-series Mac). It names a chat, says whether he asked for a new chat, and gives the
-/// message without the words that name the chat (HM-1383); the caller checks both.
-struct ModelPick: Hashable {
-    var index: Int
-    var newChat: Bool
-    var message: String
-}
+/// M-series Mac). `IntentJudge` checks its pick before anything is sent.
 
 @MainActor final class ModelRouter {
     static let shared = ModelRouter()
@@ -26,8 +21,8 @@ struct ModelPick: Hashable {
     }
 
     private struct Key: Hashable { let text: String; let ids: [String] }
-    private var cache: [Key: ModelPick?] = [:]
-    private var running: [Key: Task<ModelPick?, Never>] = [:]
+    private var cache: [Key: VoiceIntent?] = [:]
+    private var running: [Key: Task<VoiceIntent?, Never>] = [:]
     private var debounce: Task<Void, Never>?
     private var warmed: Any?
 
@@ -58,7 +53,7 @@ struct ModelPick: Hashable {
     }
 
     /// The model's pick (index into `targets`) or nil (none fits, no model, or too slow).
-    func pick(_ rest: String, _ targets: [ChatTarget]) async -> ModelPick? {
+    func pick(_ rest: String, _ targets: [ChatTarget]) async -> VoiceIntent? {
         guard Self.available, !targets.isEmpty else { return nil }
         let key = Key(text: Self.norm(rest), ids: targets.map(\.id))
         if let hit = cache[key] { return hit }
@@ -110,29 +105,76 @@ struct ModelPick: Hashable {
 
     #if canImport(FoundationModels)
     @available(macOS 26, *)
-    @Generable struct Pick {
-        @Guide(description: "The number of the chat or app the message is for, or 0 when the words name none and the topic fits none")
+    @Generable struct Intent {
+        @Guide(description: "What he wants", .anyOf(["send", "new_chat", "away", "good_night", "back", "voicemails", "summary", "list_chats", "nothing"]))
+        var action: String
+        @Guide(description: "For send or new_chat: the number of the chat or app it is for, or 0 when no listed chat clearly fits")
         var chat: Int
-        @Guide(description: "true only when he asks to start a new chat or conversation")
-        var newChat: Bool
-        @Guide(description: "The message to send, in his exact words, without the part that names the chat or app or asks for a new chat (e.g. drop 'use ChatGPT to ask')")
+        @Guide(description: "The words he used to name a chat, app, project or folder, exactly as he said them; empty when he named none")
+        var named: String
+        @Guide(description: "true only when he points at the chat in front of him instead of naming one or saying what it is about")
+        var meansChatInFront: Bool
+        @Guide(description: "For back: true when he also asks what was done while he was away")
+        var wantsSummary: Bool
+        @Guide(description: "For send or new_chat: the message in his exact words, without the words that name the chat or ask for a new chat; empty otherwise")
         var message: String
+    }
+
+    @available(macOS 26, *)
+    @Generable struct Choice {
+        @Guide(description: "The number of the chat he chose, or 0 when he chose none of them or it is unclear")
+        var chat: Int
+        @Guide(description: "true when he wants to stop and send nothing")
+        var cancel: Bool
     }
 
     @available(macOS 26, *)
     private static func session() -> LanguageModelSession {
         LanguageModelSession(instructions: """
-            The user speaks a message for one of their AI chats: coding chats in a terminal or editor, \
-            and chat apps such as the Claude app or ChatGPT. Pick the chat the message is for: \
-            by the name, project, folder or app he says, or by what the message is about \
-            (a chat whose "working on" matches the topic). \
-            Answer 0 when he names no chat and the topic fits none clearly. \
-            Copy his message word for word, leaving out only the words that pick the chat.
+            The user talks to his Mac after a wake phrase. Decide what he wants:
+            send: a message for one of his AI chats (listed: coding chats in a terminal or editor, and chats in chat apps).
+            new_chat: he asks to start a new chat or conversation, in a chat app or in a project folder.
+            away: he goes away for a while and wants quiet. good_night: he goes to sleep.
+            back: he is back, or it is morning. voicemails: he wants his waiting voice messages played.
+            summary: he asks what was done while he was away. list_chats: he asks which chats are open.
+            nothing: none of these.
+            For send, pick the chat by the name, project, folder or app he says, or by what the message is about \
+            (a chat whose title or "working on" matches). Answer 0 when he names no chat and the topic fits none clearly. \
+            Never pick a chat only because it was used last.
             """)
     }
     #endif
 
-    private static func ask(_ rest: String, _ targets: [ChatTarget], warm: Any?) async -> ModelPick? {
+    /// His answer to "Which chat?": an index into `chats` (the offered ones first, in the
+    /// order they were said), nil for none or unclear, and whether he wants to stop.
+    /// nil when there is no model.
+    func choose(_ answer: String, question: String, chats: [ChatTarget]) async -> (index: Int?, cancel: Bool)? {
+        #if canImport(FoundationModels)
+        if #available(macOS 26, *), Self.available, !chats.isEmpty {
+            let prompt = """
+                You asked him: \u{201C}\(question)\u{201D}
+                His chats (the ones you offered come first, in the order you said them):
+                \(Self.describe(chats))
+
+                He answered: \u{201C}\(answer)\u{201D}
+                The microphone may have heard your own question before his answer; only his words count.
+                """
+            do {
+                let s = LanguageModelSession(instructions: "Read which chat the user chose from a list. Answer with its number.")
+                let r = try await s.respond(to: prompt, generating: Choice.self, options: GenerationOptions(sampling: .greedy))
+                Isolation.note("model choice: \(r.content.chat)\(r.content.cancel ? " (cancel)" : "")")
+                let n = r.content.chat
+                return ((1...chats.count).contains(n) ? n - 1 : nil, r.content.cancel)
+            } catch {
+                Isolation.note("model choice failed: \(error.localizedDescription)")
+                return nil
+            }
+        }
+        #endif
+        return nil
+    }
+
+    private static func ask(_ rest: String, _ targets: [ChatTarget], warm: Any?) async -> VoiceIntent? {
         #if canImport(FoundationModels)
         if #available(macOS 26, *) {
             let start = Date()
@@ -146,12 +188,13 @@ struct ModelPick: Hashable {
             prompt += "He said: \u{201C}\(rest)\u{201D}"
             do {
                 let s = (warm as? LanguageModelSession) ?? session()
-                let r = try await s.respond(to: prompt, generating: Pick.self,
+                let r = try await s.respond(to: prompt, generating: Intent.self,
                                                     options: GenerationOptions(sampling: .greedy))
-                let n = r.content.chat
-                Isolation.note(String(format: "model route: %d%@ in %.0f ms", n, r.content.newChat ? " (new chat)" : "", Date().timeIntervalSince(start) * 1000))
-                guard (1...targets.count).contains(n) else { return nil }
-                return ModelPick(index: n - 1, newChat: r.content.newChat, message: r.content.message)
+                let c = r.content
+                Isolation.note(String(format: "model: %@ %d \u{201C}%@\u{201D} in %.0f ms", c.action, c.chat, c.named, Date().timeIntervalSince(start) * 1000))
+                return VoiceIntent(action: VoiceIntent.Action(rawValue: c.action) ?? .nothing,
+                                   chat: (1...targets.count).contains(c.chat) ? c.chat - 1 : nil,
+                                   named: c.named, meansFront: c.meansChatInFront, summary: c.wantsSummary, message: c.message)
             } catch {
                 Isolation.note("model route failed: \(error.localizedDescription)")
                 return nil

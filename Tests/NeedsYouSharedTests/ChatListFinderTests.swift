@@ -37,13 +37,13 @@ final class ChatListFinderTests: XCTestCase {
             AXItem(role: "AXButton", label: "Recents", depth: 22, x: 1622, y: 643, width: 243, height: 25),
             AXItem(role: "AXButton", label: "Reply OK", depth: 27, x: 1618, y: 674, width: 261, height: 30),
             AXItem(role: "AXButton", label: "Pin chat", depth: 29, x: 1825, y: 679, width: 20, height: 20),
-            AXItem(role: "AXButton", label: "Identify model identity", depth: 27, x: 1618, y: 705, width: 261, height: 30),
-            AXItem(role: "AXButton", label: "Control TV startup remotely", depth: 27, x: 1618, y: 798, width: 261, height: 30),
-            AXItem(role: "AXButton", label: "how spaghetti is my code?", depth: 27, x: 1618, y: 1263, width: 261, height: 30),
+            AXItem(role: "AXButton", label: "Rename photo files", depth: 27, x: 1618, y: 705, width: 261, height: 30),
+            AXItem(role: "AXButton", label: "Fix a squeaky door", depth: 27, x: 1618, y: 798, width: 261, height: 30),
+            AXItem(role: "AXButton", label: "best pasta for lasagna?", depth: 27, x: 1618, y: 1263, width: 261, height: 30),
             AXItem(role: "AXButton", label: "Copy message", depth: 27, x: 2678, y: 603, width: 26, height: 26),
             AXItem(role: "AXButton", label: "Upgrade", depth: 16, x: 2640, y: 432, width: 103, height: 34),
             AXItem(role: "AXTextArea", label: "Ask ChatGPT", depth: 36, x: 2069, y: 1240, width: 538, height: 36)]
-        XCTAssertEqual(labels(items), ["Reply OK", "Identify model identity", "Control TV startup remotely", "how spaghetti is my code?"])
+        XCTAssertEqual(labels(items), ["Reply OK", "Rename photo files", "Fix a squeaky door", "best pasta for lasagna?"])
         XCTAssertTrue(ChatListFinder.isChatLayout(items))
     }
 
@@ -52,7 +52,7 @@ final class ChatListFinderTests: XCTestCase {
             AXItem(role: "AXTextField", label: "Search", depth: 8, x: 300, y: 60, width: 400, height: 28),
             AXItem(role: "AXRow", label: "GitHub", depth: 10, x: 300, y: 120, width: 400, height: 44),
             AXItem(role: "AXRow", label: "Google", depth: 10, x: 300, y: 164, width: 400, height: 44),
-            AXItem(role: "AXRow", label: "Hetzner", depth: 10, x: 300, y: 208, width: 400, height: 44),
+            AXItem(role: "AXRow", label: "Dropbox", depth: 10, x: 300, y: 208, width: 400, height: 44),
         ]
         XCTAssertFalse(ChatListFinder.isChatLayout(items))
     }

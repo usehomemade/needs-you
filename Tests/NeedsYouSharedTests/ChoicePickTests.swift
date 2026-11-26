@@ -1,43 +1,32 @@
 import XCTest
 @testable import NeedsYouShared
 
+/// Spoken answers are read by the on-device model (HM-1399). Code only drops our own
+/// question from the mic and, with no model, finds a chat by the rare words of its name.
 final class ChoicePickTests: XCTestCase {
+    /// 26 Nov 12:33: the answer named a chat that was not offered.
+    func testAnswerNamesAChatByItsRareWords() {
+        let all = ["Spreadsheet formula request", "Printer setup request", "Lisbon and Porto trip planner", "needs-you"]
+        XCTAssertEqual(ChoicePick.name("None of them. There is a chat called Printer Setup Request in Cloud Desktop App.", names: all), 1)
+    }
+
+    /// 26 Nov 12:24: "Cloud Code needs you chat." went to the home-folder chat.
+    func testWordsEveryChatSharesDoNotPick() {
+        let all = ["Claude Code in your home folder", "Claude Code: needs-you", "Claude Code: trip planner"]
+        XCTAssertEqual(ChoicePick.name("Claude Code needs you chat.", names: all), 1)
+    }
+
     let names = ["recipebox", "Portuguese bakery business plan"]
     let q = "Which chat? 1, recipebox. Or 2, Portuguese bakery business plan?"
 
-    func testNumbers() {
-        for s in ["Two.", "2", "number two", "the second", "the second one", "iki", "ikinci", "zwei", "To.", "two please"] {
-            XCTAssertEqual(ChoicePick.pick(s, question: q, names: names), 1, s)
-        }
-        for s in ["One.", "the first one", "bir", "number 1"] {
-            XCTAssertEqual(ChoicePick.pick(s, question: q, names: names), 0, s)
-        }
-        XCTAssertNil(ChoicePick.pick("three", question: q, names: names))
-        XCTAssertNil(ChoicePick.pick("I want to go to the store for a while", question: q, names: names))
-    }
-
-    func testYesForOneOption() {
-        XCTAssertEqual(ChoicePick.pick("Yes.", question: "Which chat? orchard?", names: ["orchard"]), 0)
-        XCTAssertNil(ChoicePick.pick("Yes.", question: q, names: names))
-    }
-
     func testNames() {
-        XCTAssertEqual(ChoicePick.pick("the Portuguese one", question: q, names: names), 1)
-        XCTAssertEqual(ChoicePick.pick("recipebox", question: q, names: names), 0)
-        XCTAssertEqual(ChoicePick.pick("bakery business", question: q, names: names), 1)
+        XCTAssertEqual(ChoicePick.name("the Portuguese one", names: names), 1)
+        XCTAssertEqual(ChoicePick.name("recipebox", names: names), 0)
+        XCTAssertNil(ChoicePick.name("I want to go to the store", names: names))
     }
 
-    func testOwnQuestionInTheMicIsNotHisAnswer() {
-        XCTAssertNil(ChoicePick.pick("Which?", question: q, names: names))
-        XCTAssertNil(ChoicePick.pick("Which chat", question: q, names: names))
-        XCTAssertEqual(ChoicePick.pick("Which chat? One, recipebox. Or two, Portuguese bakery business plan? Two.", question: q, names: names), 1)
-        XCTAssertEqual(ChoicePick.pick("Or two, Portuguese bakery business plan. Two.", question: q, names: names), 1)
+    func testOwnQuestionInTheMicIsDropped() {
         XCTAssertEqual(ChoicePick.stripEcho("Which chat? One recipebox", question: q, names: names), "")
-        // Heard by the real listening path in clarify-test (question audio in the mic):
-        XCTAssertNil(ChoicePick.pick("Witchchat, one: Resipibox, or two: Portuguese bakery business plan.", question: q, names: names))
-        XCTAssertEqual(ChoicePick.pick("Witchchat, one: Recipebocks, or two: Portuguese bakery business plan? Two.", question: q, names: names), 1)
-        XCTAssertEqual(ChoicePick.pick("Number 2, Portuguese Bakery Business Plan. Number 2, please.", question: q, names: names), 1)
-        // His own answer that only repeats a name is not our echo.
-        XCTAssertEqual(ChoicePick.pick("Portuguese bakery business plan", question: q, names: names), 1)
+        XCTAssertEqual(ChoicePick.stripEcho("Portuguese bakery business plan", question: q, names: names), "Portuguese bakery business plan")
     }
 }

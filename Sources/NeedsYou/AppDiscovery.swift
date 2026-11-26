@@ -11,6 +11,21 @@ enum AppDiscovery {
     private static let store = OSAllocatedUnfairLock<[String: Found]>(initialState: [:])
     static var found: [Found] { store.withLock { $0.values.sorted { $0.name < $1.name } } }
 
+    /// Every chat app found so far, running or not, so "new chat in <app>" can open one
+    /// that is closed. Kept in the app's defaults; an app that is uninstalled drops out.
+    static var known: [Found] {
+        let d = UserDefaults.standard.dictionary(forKey: "chatApps.known") as? [String: String] ?? [:]
+        return d.map { Found(bundle: $0.key, name: $0.value) }
+            .filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundle) != nil }
+            .sorted { $0.name < $1.name }
+    }
+    private static func remember(_ f: Found) {
+        var d = UserDefaults.standard.dictionary(forKey: "chatApps.known") as? [String: String] ?? [:]
+        guard d[f.bundle] != f.name else { return }
+        d[f.bundle] = f.name
+        UserDefaults.standard.set(d, forKey: "chatApps.known")
+    }
+
     @MainActor private static var timer: Timer?
 
     @MainActor static func start() {
@@ -54,5 +69,6 @@ enum AppDiscovery {
         }
         let isChat = scan.hasField // message field below a chat column (ChatListFinder.isChatLayout)
         store.withLock { $0[bundle] = isChat ? Found(bundle: bundle, name: name) : nil }
+        if isChat, !name.isEmpty { remember(Found(bundle: bundle, name: name)) }
     }
 }

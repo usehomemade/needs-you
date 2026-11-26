@@ -85,7 +85,9 @@ final class VoiceCommands: ObservableObject {
 
     /// Asks which chat, once more if the answer was unclear. Returns the pick, or nil
     /// and whether he pressed Escape. `test`: the clarify-test hook (muted, file input).
-    func askWhichChat(_ options: [ChatTarget], heardName: String, test: Request? = nil, heard: ((String) -> Void)? = nil) async -> (ChatTarget?, Bool) {
+    /// `all`: every target; an answer may name a chat that was not offered ("none of them,
+    /// there is a chat called Printer Setup Request", 26 Nov 12:33).
+    func askWhichChat(_ options: [ChatTarget], heardName: String, all: [ChatTarget] = [], test: Request? = nil, heard: ((String) -> Void)? = nil) async -> (ChatTarget?, Bool) {
         let names = options.map { Self.short($0.title) }
         var asked: [String] = []
         for again in [false, true] {
@@ -95,10 +97,23 @@ final class VoiceCommands: ObservableObject {
             if Conductor.shared.clarifyEscaped { return (nil, true) }
             guard let answer, !answer.isEmpty else { continue }
             heard?(answer)
-            let i = ChoicePick.pick(answer, questions: asked, names: names)
-            Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(i.map { names[$0] } ?? "unclear")")
-            if let i { return (options[i], false) }
-            if names.count == 1, ChoicePick.tokens(answer).contains(where: { ["no", "nope", "hayır", "nein"].contains($0) }) { return (nil, true) }
+            // Pressing 1 to 4 picks an offered chat. Spoken answers go to the on-device model
+            // (HM-1399), which also sees every other chat: "none of them, the printer setup one".
+            if let n = Int(answer.trimmingCharacters(in: .whitespacesAndNewlines)), (1...options.count).contains(n) { return (options[n - 1], false) }
+            let everyone = options + all.filter { a in !options.contains { $0.id == a.id } }
+            let allNames = everyone.map { Self.short($0.title) }
+            let clean = asked.map { ChoicePick.stripEcho(answer, question: $0, names: names) }.min { $0.count < $1.count } ?? answer
+            let byName = ChoicePick.name(clean, names: allNames)
+            var pick: Int?
+            if let read = await ModelRouter.shared.choose(answer, question: q, chats: everyone) {
+                if read.cancel { Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> cancel"); return (nil, true) }
+                // An offered chat counts as he said it; another chat only when its name's rare words are in his answer.
+                if let i = read.index, i < options.count || i == byName { pick = i }
+            } else {
+                pick = byName
+            }
+            Isolation.note("clarify: \u{201C}\(answer)\u{201D} -> \(pick.map { everyone[$0].title } ?? "unclear")")
+            if let pick { return (everyone[pick], false) }
         }
         return (nil, false)
     }
@@ -414,13 +429,6 @@ final class VoiceCommands: ObservableObject {
         // `needs-you wake-test --arm-pane none` ends the test. An expired lock once
         // sent "Test four." into a real chat.
         let testOnly = requested || !Router.armedPanes.isEmpty
-        // "Good night", "I'm back", "What did you work on last night?" (HM-1352).
-        if let rest = Wake.afterWakeWord(transcript), let p = PresenceCommand.parse(rest) {
-            if requested || dryRun { var r = Response(status: "dry_run"); r.state = "presence: \(p)"; return r }
-            handling = true
-            defer { handling = false; refresh() }
-            return await presence(p, transcript: transcript)
-        }
         handling = true
         defer { handling = false; countdown = nil; refresh() }
         let targets = await Router.voiceTargets(testOnly: testOnly)
@@ -433,15 +441,20 @@ final class VoiceCommands: ObservableObject {
         }
         // A message kept after "which chat?" got no clear answer: "Hey Claude, orchard" (or "two") sends it.
         if !testOnly, let u = unsent, Date().timeIntervalSince(u.at) < 300, let rest = Wake.afterWakeWord(transcript),
-           !rest.contains(":"), rest.split(separator: " ").count <= 4 { // only a name or a number, no new message
+           rest.split(separator: " ").count <= 4 { // short: a name or a number for the kept message
             let names = u.options.map { Self.short($0.title) }
             let fresh = targets.filter { t in u.options.contains { $0.id == t.id } }
-            if let i = ChoicePick.pick(rest, question: "", names: names), fresh.contains(where: { $0.id == u.options[i].id }) {
+            let read = await ModelRouter.shared.choose(rest, question: Self.whichChatQuestion(names, heardName: "", again: false), chats: u.options)
+            let i = read.map { $0.index } ?? ChoicePick.name(rest, names: names)
+            if let i, fresh.contains(where: { $0.id == u.options[i].id }) {
                 unsent = nil
                 return await route(Wake.phrase + ", " + Self.short(u.options[i].title) + ": " + u.text, dryRun: dryRun, testOnly: requested, forced: u.options[i])
             }
         }
-        var (parsed, routeLog) = testOnly ? Router.parseLogged(transcript, targets: targets) : await Router.parseSmart(transcript, targets: targets)
+        // A test with an armed pane sends the whole sentence there; the model is not asked.
+        var (parsed, routeLog): (Router.Parsed, String) = testOnly && Router.testRoot == nil
+            ? (.send(targets[0], Router.clean(Wake.afterWakeWord(transcript) ?? transcript)), "test pane")
+            : await Router.parseSmart(transcript, targets: targets)
         if let forced, case .send(_, let m) = parsed { parsed = .send(forced, m) }
         else if let forced, case .choose(_, let m, _) = parsed { parsed = .send(forced, m) }
         routeNote = routeLog
@@ -454,8 +467,9 @@ final class VoiceCommands: ObservableObject {
             // No chat named and no explicit "new chat": a live test goes to the armed pane too.
             case .newChat(nil, let m) where Router.testRoot == nil: parsed = .send(targets[0], m)
             case .nothing, .newChat: break
-            // Tests never open or type into a real chat app.
+            // Tests never open or type into a real chat app, or change do not disturb.
             case .app: parsed = .nothing("Tests never open chat apps.")
+            case .presence: parsed = .nothing("Tests never change do not disturb.")
             }
         }
 
@@ -470,7 +484,7 @@ final class VoiceCommands: ObservableObject {
                 return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: why)
             }
             else {
-                let (pick, escaped) = await askWhichChat(options, heardName: heard)
+                let (pick, escaped) = await askWhichChat(options, heardName: heard, all: targets)
                 if let pick {
                     if let rest = Wake.afterWakeWord(transcript) {
                         RoutingMemoryStore.shared.remember(words: RoutingMemory.words(rest: rest, heardName: heard), target: pick, source: "asked")
@@ -492,6 +506,10 @@ final class VoiceCommands: ObservableObject {
         }
 
         switch parsed {
+        case .presence(let p):
+            // "Good night", "I'm back", "What did you work on last night?" (HM-1352), as the model read it.
+            if dryRun { var r = Response(status: "dry_run"); r.state = "presence: \(p)"; return r }
+            return await presence(p, transcript: transcript)
         case .nothing(let why):
             Sounds.shared.play(.cancelled)
             Island.shared.error("Not sent", Island.oneLine(why))
@@ -514,8 +532,9 @@ final class VoiceCommands: ObservableObject {
                 return record(target, text: text, transcript: transcript, outcome: .cancelled, error: nil)
             }
             // A chat app without Needs You can't answer out loud: no voice line, and it stays in front.
+            // One with it gets this Mac's name, so only this Mac speaks the reply (HM-1398).
             let quietApp = target.kind == .desktop && !Router.appHasNeedsYou(target.id)
-            let delivered = quietApp ? text : text + "\n" + Router.voiceSuffix
+            let delivered = quietApp ? text : text + "\n" + (target.kind == .desktop ? Router.appVoiceSuffix : Router.voiceSuffix)
             do {
                 let how = try await Router.deliver(delivered, to: target, stayInFront: quietApp)
                 Sounds.shared.play(.sent)
@@ -656,7 +675,7 @@ final class VoiceCommands: ObservableObject {
             return record(nil, text: text, transcript: transcript, outcome: .cancelled, error: nil)
         }
         let voice = Router.appHasNeedsYou(app.bundle)
-        let delivered = voice ? text + "\n" + Router.voiceSuffix : text
+        let delivered = voice ? text + "\n" + Router.appVoiceSuffix : text // only this Mac speaks the reply (HM-1398)
         do {
             let target = newChat
                 ? try await Router.startAppChat(app)

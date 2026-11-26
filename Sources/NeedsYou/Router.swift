@@ -43,36 +43,26 @@ enum Router {
     static let herdr = "/opt/homebrew/bin/herdr"
     /// Added on its own line to every delivered message, so the agent answers out loud.
     static let voiceSuffix = "(sent by voice: reply by voice with needs-you)"
+    /// Chat apps sync their chats to his other Macs: the reply names this Mac, and Needs You
+    /// on any other Mac refuses to speak it (HM-1398).
+    static var appVoiceSuffix: String {
+        let mac = Host.current().localizedName ?? "this Mac"
+        return "(sent by voice from \(mac): reply by voice with needs-you, for_mac \"\(mac)\")"
+    }
     static let desktopBundleID = "com.anthropic.claudefordesktop"
 
-    /// Chat apps with no MCP registration of their own (HM-1374): reachable by name only
-    /// ("Hey Claude, ChatGPT: ..."), never as "this one"; typed into their open chat.
-    static let chatApps: [(bundle: String, title: String, aliases: [String])] = [
-        (desktopBundleID, "Claude app", ["claude desktop", "claude app", "claude for desktop", "claude desktop app", "desktop"]),
-        ("com.openai.codex", "ChatGPT", ["chatgpt", "chat gpt", "chat g p t", "chatgbt", "codex app"]),
-        ("com.openai.chat", "ChatGPT", ["chatgpt", "chat gpt", "chat g p t", "chatgbt"]),
-    ]
-
-    /// A chat app on this Mac, running or not (HM-1383).
+    /// A chat app on this Mac, running or not (HM-1383). Found by its layout
+    /// (AppDiscovery), named by its own name: no app is listed here by name.
     struct ChatApp: Hashable { var bundle: String; var title: String; var aliases: [String] }
 
-    /// Installed chat apps, one per name (a running copy first): what "new chat on ..." can open.
+    private static func chatApp(_ f: AppDiscovery.Found) -> ChatApp {
+        ChatApp(bundle: f.bundle, title: f.name, aliases: [f.name.lowercased()])
+    }
+
+    /// Chat apps found on this Mac, running ones first: what "new chat on ..." can open.
     static func installedApps() -> [ChatApp] {
-        var out: [ChatApp] = []
-        let sorted = chatApps.sorted { a, b in
-            let ra = !NSRunningApplication.runningApplications(withBundleIdentifier: a.bundle).isEmpty
-            let rb = !NSRunningApplication.runningApplications(withBundleIdentifier: b.bundle).isEmpty
-            return ra && !rb
-        }
-        for a in sorted where !out.contains(where: { $0.title == a.title }) {
-            let running = !NSRunningApplication.runningApplications(withBundleIdentifier: a.bundle).isEmpty
-            guard running || NSWorkspace.shared.urlForApplication(withBundleIdentifier: a.bundle) != nil else { continue }
-            out.append(ChatApp(bundle: a.bundle, title: a.title, aliases: a.aliases))
-        }
-        for f in AppDiscovery.found where !out.contains(where: { $0.bundle == f.bundle }) && !f.name.isEmpty {
-            out.append(ChatApp(bundle: f.bundle, title: f.name, aliases: [f.name.lowercased()]))
-        }
-        return out
+        let running = runningChatApps()
+        return running + AppDiscovery.known.filter { k in !running.contains { $0.bundle == k.bundle } }.map(chatApp)
     }
 
     /// The app has the Needs You MCP server, so its chat can answer out loud. Without it
@@ -83,18 +73,9 @@ enum Router {
         return ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").contains("needs-you")
     }
 
-    /// Running chat apps: the ones found by layout (AppDiscovery) plus the known ones, whose
-    /// entries only add the spoken names ("chat g p t") and open them when not running.
+    /// Running chat apps, as found by their layout (AppDiscovery).
     static func runningChatApps() -> [ChatApp] {
-        var out: [ChatApp] = []
-        for a in chatApps where NSRunningApplication.runningApplications(withBundleIdentifier: a.bundle).first != nil
-            && !out.contains(where: { $0.title == a.title }) {
-            out.append(ChatApp(bundle: a.bundle, title: a.title, aliases: a.aliases))
-        }
-        for f in AppDiscovery.found where !out.contains(where: { $0.bundle == f.bundle }) && !f.name.isEmpty {
-            out.append(ChatApp(bundle: f.bundle, title: f.name, aliases: [f.name.lowercased()]))
-        }
-        return out
+        AppDiscovery.found.filter { !$0.name.isEmpty }.map(chatApp)
     }
 
     static func appTargets() -> [ChatTarget] {
@@ -109,7 +90,7 @@ enum Router {
     /// each a target that opens it before typing. Only while the sidebar is shown.
     static func appChatTargets(_ apps: [ChatTarget]) -> [ChatTarget] {
         apps.flatMap { app -> [ChatTarget] in
-            (AXDelivery.scanApp(app.id)?.chats.map(\.title) ?? []).filter { $0.caseInsensitiveCompare(app.detail) != .orderedSame }.prefix(15).map { title in
+            (AXDelivery.scanApp(app.id)?.chats.map(\.title) ?? []).filter { $0.caseInsensitiveCompare(app.detail) != .orderedSame }.map { title in
                 var t = ChatTarget(kind: .desktop, id: app.id, title: title, aliases: [], focused: false)
                 t.detail = title
                 t.appChat = title
@@ -230,116 +211,79 @@ enum Router {
         case newChat(String?, String) // project name as heard (nil = home), message
         /// A chat app with no hooks (HM-1383): a new chat there, or its open chat.
         case app(ChatApp, String, newChat: Bool)
+        /// Do not disturb, voicemails, list chats (HM-1352), as the model read it.
+        case presence(PresenceCommand)
     }
 
-    /// "new chat on Claude desktop, ask ...", "use ChatGPT to ask ...": always a new chat in that app.
-    static func appCommand(_ rest: String) -> (Parsed, String)? {
-        let apps = installedApps()
-        guard let m = AppCommand.parse(rest, apps: apps.map(\.aliases)) else { return nil }
-        let log = "app command: new chat in \(apps[m.app].title)"
-        let text = clean(m.message)
-        guard !text.isEmpty, !Speech.isFillerOnly(text) else { return (.nothing("There was no message to send."), log) }
-        return (.app(apps[m.app], text, newChat: true), log)
-    }
-
-    static func parse(_ transcript: String, targets: [ChatTarget]) -> Parsed { parseLogged(transcript, targets: targets).0 }
-
-    /// The message part of a command so far, without the wake phrase and a leading
-    /// chat name ("Hey Claude, this one:" -> ""). HM-1360: a pause there is not the end.
+    /// The message part of a command so far, without the wake phrase. HM-1360: a pause
+    /// right after "Hey Claude, orchard:" is not the end; the message is still coming.
     static func messageAfterTarget(_ transcript: String) -> String {
-        var rest = Wake.afterWakeWord(transcript) ?? transcript
-        if let r = rest.range(of: #"^(?i)(this one|this chat|this window|this tab|this|here)\b[\s,.:;!-]*"#, options: .regularExpression) { rest = String(rest[r.upperBound...]) }
-        else if let colon = rest.firstIndex(of: ":"), rest.distance(from: rest.startIndex, to: colon) <= 60 { rest = String(rest[rest.index(after: colon)...]) }
+        let rest = (Wake.afterWakeWord(transcript) ?? transcript).trimmingCharacters(in: .whitespacesAndNewlines)
+        if rest.hasSuffix(":") { return "" }
         let text = clean(rest)
         return Speech.isFillerOnly(text) ? "" : text
     }
 
-    /// Parses and returns one line for the routing log (heard name, top matches, why).
-    /// The matching itself is `ChatMatcher` (NeedsYouShared), unit-tested on real cases.
-    static func parseLogged(_ transcript: String, targets: [ChatTarget]) -> (Parsed, String) {
-        guard let rest = Wake.afterWakeWord(transcript) else { return (.nothing("No \"\(Wake.phrase)\" in what I heard."), "no wake phrase") }
-        if let a = appCommand(rest) { return a }
-        let (route, log) = ChatMatcher.route(rest, targets.map(\.candidate), isProject: isProject)
-        return parsed(route, log: log, targets: targets)
-    }
-
-    /// The matcher, then the on-device model where the matcher is not sure (HM-1364).
+    /// The on-device model reads the command (HM-1399); `IntentJudge` checks its pick
+    /// against his words and his earlier picks. No phrase or pattern decides anything.
     @MainActor static func parseSmart(_ transcript: String, targets: [ChatTarget], memory: ((String) -> String?)? = nil) async -> (Parsed, String) {
         RoutingMemoryStore.shared.openKeys = Set(targets.map(\.memoryKey))
         let memory = memory ?? { RoutingMemoryStore.shared.lookup($0) }
-        guard let rest = Wake.afterWakeWord(transcript) else { return parseLogged(transcript, targets: targets) }
-        if let a = appCommand(rest) { return a }
+        guard let rest = Wake.afterWakeWord(transcript) else { return (.nothing("No \"\(Wake.phrase)\" in what I heard."), "no wake phrase") }
         let candidates = targets.map(\.candidate)
-        let (route, log) = ChatMatcher.route(rest, candidates, isProject: isProject)
-        switch route {
-        case .named, .newChat: return parsed(route, log: log, targets: targets)
-        case .front, .choose: break
-        }
-        let words: String = { if case .choose(_, _, let h) = route { return RoutingMemory.words(rest: rest, heardName: h) }; return RoutingMemory.words(rest: rest) }()
-        let mem = memory(words).flatMap { key in targets.firstIndex { $0.memoryKey == key } }
-        let model = await ModelRouter.shared.pick(rest, targets)
-        // The model asks for a new chat in an app he named ("start a ChatGPT chat about ..."):
-        // only when the app's name is really in his words (HM-1383).
-        if let p = model, p.newChat, targets[p.index].kind == .desktop, mentions(rest, targets[p.index]),
-           let app = installedApps().first(where: { $0.bundle == targets[p.index].id }) {
-            let text = clean(ModelRouter.trusted(p.message, in: rest) ?? rest)
-            if !text.isEmpty { return (.app(app, text, newChat: true), log + "; model: new chat in \(app.title)") }
-        }
+        var intent = await ModelRouter.shared.pick(rest, targets)
+        if let i = intent { intent?.named = VoiceIntent.ownWords(i.named, in: rest) }
+        let named = intent?.named.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let mem = memory(RoutingMemory.words(rest: rest, heardName: named)).flatMap { key in targets.firstIndex { $0.memoryKey == key } }
         let topic = ChatMatcher.topic(rest, candidates)
-        let (judged, why) = RouteJudge.decide(route, model: model?.index, memory: mem, topic: topic, explicitFront: log.hasPrefix("this one"))
-        let topicNote = topic.map { "topic \($0)" }
-        // Nothing named and nothing clear: ask between the chats used most recently.
-        var judged0 = judged
-        if case .choose(let idx, let m, let h) = judged, idx.isEmpty, h.isEmpty {
-            judged0 = .choose(Array(targets.indices.filter { targets[$0].kind != .desktop }.prefix(3)), m, heardName: "")
-        }
-        return parsed(judged0, log: [log, topicNote, why.isEmpty ? nil : why].compactMap { $0 }.joined(separator: "; "), targets: targets)
-    }
-
-    /// One of the app's names is in what he said.
-    static func mentions(_ rest: String, _ t: ChatTarget) -> Bool {
-        let said = " " + ChatMatcher.words(rest).joined(separator: " ") + " "
-        return ([t.title] + t.aliases).contains { a in
-            let w = ChatMatcher.words(a).joined(separator: " ")
-            return !w.isEmpty && w != "desktop" && said.contains(" " + w + " ")
-        }
-    }
-
-    private static func parsed(_ route: ChatMatcher.Route, log: String, targets: [ChatTarget]) -> (Parsed, String) {
-
-        func message(_ m: String) -> String? {
-            let text = clean(m)
-            return text.isEmpty || Speech.isFillerOnly(text) ? nil : text
-        }
-        switch route {
-        case .newChat(let project, let m):
-            guard let text = message(m) else { return (.nothing("There was no message to send."), log) }
-            return (.newChat(project, text), log)
-        case .named(let i, let m):
-            guard let text = message(m) else { return (.nothing("There was no message to send."), log) }
-            return (.send(targets[i], text), log) // named: a focus change later does not cancel it
-        case .front(let i, let m):
-            guard let text = message(m) else { return (.nothing("There was no message to send."), log) }
-            if i == nil, targets.first?.kind == .registered {
-                // Connected chats only: never start a chat by typing; ask which one.
-                return (.choose(Array(targets.prefix(4)), text, heardName: ""), log + "; nothing in front -> ask")
+        let clearTopic = ChatMatcher.topic(rest, candidates, minScore: 2)
+        let recent = Array(targets.indices.filter { targets[$0].kind != .desktop }.prefix(3))
+        let (outcome, why) = IntentJudge.decide(intent, candidates, topic: topic, clearTopic: clearTopic, memory: mem, recent: recent, isProject: isProject)
+        let text = clean(intent.flatMap { ModelRouter.trusted($0.message, in: rest) } ?? rest)
+        let hasText = !text.isEmpty && !Speech.isFillerOnly(text)
+        let modelNote = intent.map { "model: \($0.action.rawValue) \($0.chat.map { String($0 + 1) } ?? "-")\($0.named.isEmpty ? "" : " named \u{201C}\($0.named)\u{201D}")\($0.meansFront ? " (in front)" : "")" }
+            ?? (ModelRouter.available ? "model: no answer" : "model: not available")
+        let log = [modelNote, topic.map { "topic \($0 + 1)" }, why].compactMap { $0 }.joined(separator: "; ")
+        let noText: (Parsed, String) = (.nothing("There was no message to send."), log)
+        switch outcome {
+        case .nothing:
+            return (.nothing("I didn't catch what to do."), log)
+        case .presence(let a, let summary):
+            switch a {
+            case .away: return (.presence(.away(goodNight: false)), log)
+            case .goodNight: return (.presence(.away(goodNight: true)), log)
+            case .back: return (.presence(.back(summary: summary)), log)
+            case .voicemails: return (.presence(.playVoicemails), log)
+            case .summary: return (.presence(.summary), log)
+            case .listChats: return (.presence(.listChats), log)
+            default: return (.nothing("I didn't catch what to do."), log)
             }
-            guard let i else {
-                // No chat in front (or none open): start a new one in the home folder.
-                if !targets.contains(where: { $0.kind != .desktop }) { return (.newChat(nil, text), log) }
-                return (.newChat(nil, text), log + "; nothing in front -> new chat")
+        case .notFound(let n):
+            guard hasText else { return noText }
+            return (.choose([], text, heardName: n), log)
+        case .newChat(let name):
+            guard hasText else { return noText }
+            if !name.isEmpty {
+                let apps = installedApps()
+                let ranked = ChatMatcher.rank(name, apps.map { ChatCandidate(title: $0.title, aliases: $0.aliases) })
+                if let best = ranked.first, best.score >= 0.5, (ranked.dropFirst().first?.score ?? 0) <= best.score - 0.2 {
+                    return (.app(apps[best.index], text, newChat: true), log + "; new chat in \(apps[best.index].title)")
+                }
             }
-            var t = targets[i]; t.byFocus = true
+            return (.newChat(name.isEmpty ? nil : name, text), log)
+        case .send(let i, let byFocus):
+            guard hasText else { return noText }
+            var t = targets[i]; t.byFocus = byFocus
             return (.send(t, text), log)
-        case .choose(let idx, let m, let heard):
-            guard let text = message(m) else { return (.nothing("There was no message to send."), log) }
+        case .ask(let idx, let heard):
+            guard hasText else { return noText }
             return (.choose(idx.map { targets[$0] }, text, heardName: heard), log)
         }
     }
 
     /// A heard name that is a project folder under ~/Projects ("needs-you: ..." with no
     /// such chat open starts a chat there).
-    private static func isProject(_ name: String) -> Bool {
+    static func isProject(_ name: String) -> Bool {
         let root = NSHomeDirectory() + "/Projects"
         guard let best = rankFolders(name, projectFolders(root: root)).first else { return false }
         return best.score >= 0.9
@@ -475,7 +419,7 @@ enum Router {
         ChatMatcher.rank(name, targets.map(\.candidate)).map { (targets[$0.index], $0.score) }
     }
 
-    /// Picks one of the offered chats from a spoken answer ("the second one", "trip planner").
+    /// Picks one of the offered chats from a spoken answer ("the second one", "garden planner").
     static func pick(_ answer: String, from options: [ChatTarget]) -> ChatTarget? {
         let w = Speech.words(answer)
         let ordinals: [(Set<String>, Int)] = [(["first", "one", "1"], 0), (["second", "two", "2"], 1), (["third", "three", "3"], 2), (["fourth", "four", "4"], 3)]
@@ -500,6 +444,13 @@ enum Router {
         if target.kind == .registered {
             let alive = await MainActor.run { ChatRegistry.shared.reachable.contains { $0.id == target.id } }
             if !alive { throw DeliveryError.failed("That chat has ended, so nothing was sent.") }
+            return
+        }
+        if target.kind == .desktop {
+            // A chat app: it must still run. A chat in its list shares its id (the bundle), so
+            // titles are not compared here; opening the chat checks it is there (HM-1397).
+            let running = NSRunningApplication.runningApplications(withBundleIdentifier: target.id).first != nil
+            if !running { throw DeliveryError.failed("\(target.title) is not running, so nothing was sent.") }
             return
         }
         let now = await targetsAll()

@@ -23,7 +23,7 @@ final class MCPServer {
     Needs You lets the user talk to this chat by voice and lets you talk to them out loud.
     Call `status` with one short line on what this chat is working on whenever the topic changes (it is how the user's spoken messages find this chat). \
     Use `ask` when you need the user (a decision, approval, login, anything blocking); `say` to answer a follow-up; `done` to end the conversation. \
-    A message ending with "(sent by voice: reply by voice with needs-you)" came from the user's voice: reply out loud with `ask` or `say` (no_listen when no answer is needed), brief, and also in the chat. \
+    A message ending with "(sent by voice: reply by voice with needs-you)" came from the user's voice: reply out loud with `ask` or `say` (no_listen when no answer is needed), brief, and also in the chat. When it says "sent by voice from <Mac>", pass that name as for_mac. \
     Only the main agent uses Needs You: a subagent never calls these tools; it puts its question in its report and the main agent asks.
     """
 
@@ -117,21 +117,36 @@ final class MCPServer {
         tool("status", "Tell Needs You in one short line what this chat is working on. Call it when the topic changes; the user's spoken messages are routed by it.",
              ["text": str("One line, e.g. \"moving orchard deploys to CI\"")], required: ["text"]),
         tool("ask", "Ask the user out loud and wait for the spoken answer (a decision, approval, login, anything blocking). Returns JSON: status answered|voicemail|no_answer|interrupted, transcript, conversation_id.",
-             ["text": str("One or two spoken sentences"), "title": str("Short title"), "context": str("Exact steps or commands, shown with the question")], required: ["text"]),
+             ["text": str("One or two spoken sentences"), "title": str("Short title"), "context": str("Exact steps or commands, shown with the question"), "for_mac": forMac], required: ["text"]),
         tool("say", "Continue the open conversation: speak, then listen for the reply (unless no_listen).",
-             ["text": str("What to say"), "conversation_id": str("From ask"), "no_listen": ["type": "boolean", "description": "Speak without waiting for an answer"]], required: ["text"]),
+             ["text": str("What to say"), "conversation_id": str("From ask"), "no_listen": ["type": "boolean", "description": "Speak without waiting for an answer"], "for_mac": forMac], required: ["text"]),
         tool("done", "End the conversation, optionally saying something first.",
              ["text": str("Last words (optional)"), "conversation_id": str("From ask")], required: []),
         tool("inbox", "Messages from the user waiting for this chat (they normally arrive by themselves).", [:], required: []),
     ]
 
     private static func str(_ d: String) -> [String: Any] { ["type": "string", "description": d] }
+    private static let forMac = str("When replying to \"(sent by voice from <Mac>: ...)\": that Mac's name. Only that Mac speaks it.")
+
+    /// This Mac's name, as voice messages to chat apps carry it (HM-1398).
+    static var macName: String { Host.current().localizedName ?? ProcessInfo.processInfo.hostName }
+
+    /// A reply meant for another Mac: chat apps sync their chats through the account, so the
+    /// same chat can answer on every Mac. Only the Mac he spoke to may speak (HM-1398).
+    static func otherMac(_ a: [String: Any]) -> String? {
+        guard let m = (a["for_mac"] as? String)?.trimmingCharacters(in: .whitespaces), !m.isEmpty else { return nil }
+        func norm(_ s: String) -> String { s.lowercased().filter { $0.isLetter || $0.isNumber } }
+        return norm(m) == norm(macName) ? nil : m
+    }
     private static func tool(_ name: String, _ desc: String, _ props: [String: Any], required: [String]) -> [String: Any] {
         ["name": name, "description": desc, "inputSchema": ["type": "object", "properties": props, "required": required]]
     }
 
     private func call(_ name: String, _ a: [String: Any]) -> (String, Bool) {
         let text = (a["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if ["ask", "say", "done"].contains(name), let other = Self.otherMac(a) {
+            return ("Not spoken: this voice message came from \(other), and this Mac is \(Self.macName). Only \(other) speaks the reply; answer in this chat as text.", false)
+        }
         var r: Request
         switch name {
         case "status":
