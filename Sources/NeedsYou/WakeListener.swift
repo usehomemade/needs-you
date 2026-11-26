@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 import Speech
 import NeedsYouShared
 
@@ -59,8 +60,15 @@ final class WakeListener {
     /// path out: sent, silence, Escape, stop (HM-1413: other audio is lowered meanwhile).
     var onCommandMode: ((Bool) -> Void)?
     private var mode: Mode = .gate {
-        didSet { if (mode == .command) != (oldValue == .command) { onCommandMode?(mode == .command) } }
+        didSet {
+            guard (mode == .command) != (oldValue == .command) else { return }
+            commandFlag.withLock { $0 = mode == .command }
+            onCommandMode?(mode == .command)
+        }
     }
+    private let commandFlag = OSAllocatedUnfairLock(initialState: false)
+    /// A command is being recorded right now (readable from any thread).
+    var commandOpen: Bool { commandFlag.withLock { $0 } }
     private var floor: Float = -60
     private var loudRun = 0.0, quietRun = 0.0, segmentTime = 0.0
     private var preroll: [AVAudioPCMBuffer] = []

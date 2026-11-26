@@ -18,7 +18,8 @@ import SwiftUI
 final class Island: ObservableObject {
     static let shared = Island()
 
-    enum Mode: Equatable { case idle, wake, listening, thinking, sending, speaking, done, error, moon }
+    /// The states and when each ends: PillRules (HM-1414), tested in PillRulesTests.
+    typealias Mode = PillMode
 
     enum Style: String, CaseIterable, Identifiable {
         case automatic, notch, external
@@ -71,6 +72,10 @@ final class Island: ObservableObject {
     @Published private(set) var doneNote = ""
     @Published private(set) var sendStart = Date()
     @Published private(set) var sendSeconds = 2.0
+    /// A mic is open for him right now: the level bars show only then (HM-1414).
+    @Published private(set) var micOpen = false
+    /// His mic closed and his words are on their way: thinking folds back soon if they never come.
+    private var waitingForTake = false
 
     static let defaultHint = "Say \u{201C}done\u{201D} when you\u{2019}re finished"
 
@@ -116,7 +121,9 @@ final class Island: ObservableObject {
 
     /// The mic is open for him. Right after a wake the ears stay up a moment first.
     func listening(source: String) {
-        if mode == .listening { return }
+        // Already listening for another mic or the ask: it is this one's turn now, so
+        // the end of this one folds it back (an old source kept it up, HM-1414).
+        if mode == .listening { self.source = source; micOpen = true; return }
         if mode == .wake, self.source == source || source == "ask" {
             let left = 0.7 - Date().timeIntervalSince(wakeAt)
             if left > 0 {
@@ -136,7 +143,18 @@ final class Island: ObservableObject {
         source = s
         feed.reset(conductor: s == "ask")
         listenStart = Date()
+        micOpen = true
         go(.listening)
+    }
+
+    /// A Hey Claude mic stopped listening for him (HM-1414): the turn ended, the mic was
+    /// stopped or the command dropped. Listening never stays up after that.
+    func micClosed(source closed: String) {
+        guard let next = PillRules.micClosed(mode: mode, shownFor: source, closed: closed) else { return }
+        micOpen = false
+        feed.mic = 0
+        waitingForTake = true
+        go(next, why: "mic \(closed) closed")
     }
 
     /// Mic level 0...1 from the Hey Claude listener (the ask recorder is read directly).
@@ -146,7 +164,12 @@ final class Island: ObservableObject {
     }
 
     /// His turn ended, or Needs You is transcribing / publishing / waiting on the agent.
-    func thinking() { go(.thinking) }
+    func thinking() {
+        // His words arrived after his mic closed: the full thinking time from now.
+        let rearm = mode == .thinking && waitingForTake
+        waitingForTake = false
+        go(.thinking, retrigger: rearm)
+    }
 
     /// Needs You starts speaking: orange, chat name, the current sentence.
     func claudeSpeaks(_ text: String, duration: Double, envelope: [Float], chat name: String? = nil) {
@@ -187,7 +210,8 @@ final class Island: ObservableObject {
 
     /// A voice message waits in a chat's inbox until its next tool call or turn end.
     func queued(for name: String) {
-        guard Subtitles.enabled else { return }
+        // With subtitles off no note, but the island still ends on a check (it was left up, HM-1414).
+        guard Subtitles.enabled else { done(); return }
         doneNote = "Queued for " + name
         go(.done, retrigger: true)
     }
@@ -225,17 +249,17 @@ final class Island: ObservableObject {
     }
 
     /// Maps what a conversation or a Hey Claude command ended with.
+    /// Every outcome folds back or shows what happened (PillRules.ending, HM-1414).
     func finished(_ status: String, error: String?, errorTitle: String? = nil) {
-        switch status {
-        case "answered", "interrupted": thinking() // Claude works on the answer
-        case "spoken", "done", "sent": done()
-        case "queued": break // "Queued for …" is already showing
-        case "error":
+        switch PillRules.ending(status, mode: mode) {
+        case .keep: break
+        case .thinking: thinking() // Claude works on the answer
+        case .done: done()
+        case .idle: idle()
+        case .error:
             let e = error ?? "Something went wrong."
             let mic = e.localizedCaseInsensitiveContains("microphone") || e.localizedCaseInsensitiveContains("mic ")
             self.error(errorTitle ?? (mic ? "Can\u{2019}t hear you" : "Something went wrong"), Self.oneLine(e))
-        default:
-            if mode != .error { idle() }
         }
     }
 
@@ -263,10 +287,13 @@ final class Island: ObservableObject {
 
     private func area(_ m: Mode) -> CGFloat { let b = Self.base[m]!; return b.w * b.h }
 
-    private func go(_ next: Mode, retrigger: Bool = false) {
+    private func go(_ next: Mode, retrigger: Bool = false, why: String? = nil) {
         // Same state again: keep its timer. Cancelling it here (before this guard) left
         // a state with no way out, e.g. "thinking" set twice never folded back (HM-1410).
         guard next != mode || retrigger else { if next != .idle { show() }; return }
+        if next != mode { Isolation.note("pill: \(mode.rawValue) -> \(next.rawValue)" + (why.map { " (\($0))" } ?? "")) }
+        if next != .listening && next != .wake { micOpen = false }
+        if next != .thinking { waitingForTake = false }
         pending?.cancel(); pending = nil
         if next != .idle { hideTask?.cancel(); hideTask = nil; show() }
         let grow = area(next) >= area(mode)
@@ -282,16 +309,13 @@ final class Island: ObservableObject {
                 guard let self, !Task.isCancelled, self.mode == .idle else { return }
                 self.panel?.orderOut(nil)
             }
-        case .done: after(doneNote.isEmpty ? 1.1 : 2.2) { $0.go(.idle) }
-        case .moon: after(1.6) { $0.go(.idle) }
-        case .error:
-            if !reduceMotion { shakeCount += 1 }
-            after(4) { $0.go(.idle) }
-        case .sending: after(sendSeconds + 4) { $0.go(.idle) } // safety net: delivery normally ends it
-        case .thinking: after(15) { $0.go(.idle) }          // the agent may work for minutes: don't sit there
-        case .wake: after(4) { $0.go(.idle) }               // no command followed
-        case .listening: after(150) { $0.go(.idle) }        // safety net
-        case .speaking: after(120) { $0.go(.idle) }         // safety net
+        default:
+            if next == .error, !reduceMotion { shakeCount += 1 }
+            if next == .wake { micOpen = true }
+            // Every state ends on its own when nothing follows (PillRules.timeout).
+            if let s = PillRules.timeout(next, sendSeconds: sendSeconds, hasNote: !doneNote.isEmpty, waitingForTake: waitingForTake) {
+                after(s) { $0.go(.idle, why: "\(next.rawValue) timed out") }
+            }
         }
     }
 
@@ -609,14 +633,19 @@ struct IslandView: View {
             Color.clear.frame(width: 1, height: 1)
         case .wake:
             ears { RippleOrb(reduce: model.reduceMotion) } right: {
-                LevelBars(feed: model.feed, count: 5, height: 14, barWidth: 2.5, gap: 2, warm: false, wake: true, reduce: model.reduceMotion)
+                if PillRules.showsLevels(model.mode, micOpen: model.micOpen) {
+                    LevelBars(feed: model.feed, count: 5, height: 14, barWidth: 2.5, gap: 2, warm: false, wake: true, reduce: model.reduceMotion)
+                }
             }
         case .listening:
             expanded(s) {
                 ears { Orb() } right: { ElapsedTimer(start: model.listenStart) }
             } body: {
                 label("Listening", model.hint)
-                LevelBars(feed: model.feed, count: 26, height: 28, barWidth: 3, gap: 2, warm: false, wake: false, reduce: model.reduceMotion)
+                // The bars move with his voice only while a mic is really open (HM-1414).
+                if PillRules.showsLevels(model.mode, micOpen: model.micOpen) {
+                    LevelBars(feed: model.feed, count: 26, height: 28, barWidth: 3, gap: 2, warm: false, wake: false, reduce: model.reduceMotion)
+                }
             }
         case .thinking:
             ears { ThinkingDots(reduce: model.reduceMotion) } right: { Shimmer(reduce: model.reduceMotion) }

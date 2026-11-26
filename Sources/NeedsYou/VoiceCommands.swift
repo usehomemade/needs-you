@@ -178,7 +178,10 @@ final class VoiceCommands: ObservableObject {
             l.onCommandPartial = { text, swap in DispatchQueue.main.async { Subtitles.shared.userPartial(text, source: src, swap: swap); ModelRouter.shared.partial(text) } }
             l.onCommandLevel = { v in DispatchQueue.main.async { Subtitles.shared.level(v, .user, source: src) } }
             l.onHeard = { [weak self] text in DispatchQueue.main.async { self?.noteHeard(text) } }
-            l.onCommandMode = { on in Ducker.shared.set("command:\(src)", on) }
+            l.onCommandMode = { [weak self, weak l] on in
+                Ducker.shared.set("command:\(src)", on)
+                if !on { DispatchQueue.main.async { self?.commandClosed(src, l) } }
+            }
             l.onWake = { [weak self, weak other] in
                 DispatchQueue.main.async {
                     guard let self else { return }
@@ -358,7 +361,29 @@ final class VoiceCommands: ObservableObject {
 
     /// One utterance, heard by one or both mics: wait briefly for the second take,
     /// then send the better one (his voice score first, then SNR).
+    /// HM-1414: a mic's command ended. Its words normally follow at once (take, pick); the
+    /// island stops showing listening now. When no words ever come (the mic was stopped or
+    /// the command dropped mid-way), his turn is over: nothing may stay "listening", and
+    /// agents may talk again (`capturing` held them back).
+    private func commandClosed(_ src: String, _ l: WakeListener?) {
+        if l?.commandOpen == true { return } // started over (Escape once): still his turn
+        Island.shared.micClosed(source: src)
+        let at = Date()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self, self.capturing, self.firstTake == nil, !self.handling, self.lastTakeAt < at,
+                  !self.listener.commandOpen, !self.phoneListener.commandOpen else { return }
+            Isolation.note("voice: \(src) command ended without words; turn closed")
+            self.capturing = false
+            Subtitles.shared.userStopped()
+            Island.shared.idle()
+            if self.oneShot { self.oneShot = false; self.refresh() }
+        }
+    }
+
+    private var lastTakeAt = Date.distantPast
+
     private func take(_ source: String, _ wav: Data, _ score: Float?, _ snr: Float) {
+        lastTakeAt = Date()
         let mine = (source: source, wav: wav, score: score, snr: snr, at: Date())
         if let first = firstTake, first.source != source, Date().timeIntervalSince(first.at) < 4 {
             firstTake = nil
