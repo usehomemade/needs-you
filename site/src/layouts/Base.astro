@@ -6,7 +6,9 @@ import { LATEST_URL, REPO_URL, RELEASES_URL } from "../lib/github";
 interface Props { title: string; description: string }
 const { title, description } = Astro.props;
 const site = Astro.site;
-const ogImage = site ? new URL("/icons/icon-512.png", site).href : "/icons/icon-512.png";
+// Share image (1200x630). Its source is og/og.html; render it again after a change.
+const ogImage = site ? new URL("/og.png", site).href : "/og.png";
+const ogImageAlt = "The Needs You app icon above the headline: Talk to your agents. Your voice stays on your Mac.";
 const docs = (p: string) => `${REPO_URL}/blob/main/${p}`;
 ---
 <!doctype html>
@@ -22,9 +24,14 @@ const docs = (p: string) => `${REPO_URL}/blob/main/${p}`;
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={ogImageAlt} />
     {site && <meta property="og:url" content={site.href} />}
     {site && <link rel="canonical" href={site.href} />}
-    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image:alt" content={ogImageAlt} />
     <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="preload" href="/fonts/Inter-latin.woff2" as="font" type="font/woff2" crossorigin />
