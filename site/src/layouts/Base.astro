@@ -3,8 +3,8 @@ import "../styles/site.css";
 import Icon from "../components/Icons.astro";
 import { LATEST_URL, REPO_URL, RELEASES_URL } from "../lib/github";
 
-interface Props { title: string; description: string }
-const { title, description } = Astro.props;
+interface Props { title: string; description: string; noindex?: boolean }
+const { title, description, noindex = false } = Astro.props;
 const site = Astro.site;
 const ogImage = site ? new URL("/icons/icon-512.png", site).href : "/icons/icon-512.png";
 const docs = (p: string) => `${REPO_URL}/blob/main/${p}`;
@@ -22,8 +22,9 @@ const docs = (p: string) => `${REPO_URL}/blob/main/${p}`;
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
-    {site && <meta property="og:url" content={site.href} />}
-    {site && <link rel="canonical" href={site.href} />}
+    {noindex && <meta name="robots" content="noindex" />}
+    {site && !noindex && <meta property="og:url" content={site.href} />}
+    {site && !noindex && <link rel="canonical" href={site.href} />}
     <meta name="twitter:card" content="summary" />
     <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
@@ -70,11 +71,11 @@ const docs = (p: string) => `${REPO_URL}/blob/main/${p}`;
         <div class="ny-footer-inner">
           <div class="ny-footer-cols">
             <ul>
-              <li><a href="#privacy">Privacy</a></li>
-              <li><a href="#ask">Asking out loud</a></li>
-              <li><a href="#hey-mac">Hey Mac</a></li>
-              <li><a href="#voicemail">Voicemail</a></li>
-              <li><a href="#faq">FAQ</a></li>
+              <li><a href="/#privacy">Privacy</a></li>
+              <li><a href="/#ask">Asking out loud</a></li>
+              <li><a href="/#hey-mac">Hey Mac</a></li>
+              <li><a href="/#voicemail">Voicemail</a></li>
+              <li><a href="/#faq">FAQ</a></li>
             </ul>
             <ul>
               <li><a href={REPO_URL}>GitHub</a></li>
